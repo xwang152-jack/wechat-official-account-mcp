@@ -7,7 +7,7 @@ export const initSSEServer: InitTransportServerFunction = async (
   getNewServer,
   options,
 ) => {
-  const { appId, appSecret, host = 'localhost', port = '3000' } = options;
+  const { appId, appSecret, port = '3000' } = options;
 
   if (!appId || !appSecret) {
     logger.error('Missing App ID or App Secret');

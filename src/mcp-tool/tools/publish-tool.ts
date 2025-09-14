@@ -22,7 +22,7 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
     const { action } = validatedArgs;
 
     switch (action) {
-      case 'submit':
+      case 'submit': {
         const { mediaId } = validatedArgs;
         
         if (!mediaId) {
@@ -32,7 +32,7 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         try {
           const result = await apiClient.post('/cgi-bin/freepublish/submit', {
             media_id: mediaId
-          });
+          }) as any;
           
           return {
             content: [{
@@ -43,8 +43,9 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         } catch (error) {
           throw new Error(`发布提交失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'get':
+      case 'get': {
         const { publishId } = validatedArgs;
         
         if (!publishId) {
@@ -54,7 +55,7 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         try {
           const result = await apiClient.post('/cgi-bin/freepublish/get', {
             publish_id: publishId
-          });
+          }) as any;
           
           const statusMap: { [key: number]: string } = {
             0: '成功',
@@ -83,8 +84,9 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         } catch (error) {
           throw new Error(`查询发布状态失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'delete':
+      case 'delete': {
         const { publishId: deletePublishId } = validatedArgs;
         
         if (!deletePublishId) {
@@ -94,7 +96,7 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         try {
           await apiClient.post('/cgi-bin/freepublish/delete', {
             publish_id: deletePublishId
-          });
+          }) as any;
           
           return {
             content: [{
@@ -105,15 +107,16 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         } catch (error) {
           throw new Error(`删除发布失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'list':
+      case 'list': {
         const { offset = 0, count = 20 } = validatedArgs;
         
         try {
           const result = await apiClient.post('/cgi-bin/freepublish/batchget', {
             offset,
             count
-          });
+          }) as any;
           
           const statusMap: { [key: number]: string } = {
             0: '成功',
@@ -144,6 +147,7 @@ async function handlePublishTool(context: WechatToolContext): Promise<WechatTool
         } catch (error) {
           throw new Error(`获取发布列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
       default:
         throw new Error(`Unknown action: ${action}`);

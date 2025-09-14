@@ -1,17 +1,19 @@
 import { WechatApiClient } from '../wechat/api-client.js';
 import { AuthManager } from '../auth/auth-manager.js';
+import { ZodRawShape } from 'zod';
 
 /**
  * 微信工具参数类型
  */
 export interface WechatToolArgs {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
  * 微信工具结果类型
  */
 export interface WechatToolResult {
+  [x: string]: unknown;
   content: Array<{
     type: 'text' | 'image' | 'resource';
     text?: string;
@@ -44,10 +46,25 @@ export interface WechatToolDefinition {
   description: string;
   inputSchema: {
     type: 'object';
-    properties: Record<string, any>;
+    properties: Record<string, unknown>;
     required?: string[];
   };
   handler: WechatToolHandler;
+}
+
+/**
+ * MCP工具处理器类型
+ */
+export type McpToolHandler = (params: unknown, apiClient: WechatApiClient) => Promise<WechatToolResult>;
+
+/**
+ * MCP工具定义
+ */
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: ZodRawShape;
+  handler: McpToolHandler;
 }
 
 /**

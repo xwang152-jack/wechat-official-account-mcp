@@ -1,17 +1,22 @@
-# Source files
+# Source files (exclude from npm package)
 src/
+api/
 
 # Development files
 .trae/
 .vscode/
-.env
-.env.local
-.env.development
-.env.test
-.env.production
+.env*
 
 # Build artifacts (keep dist for distribution)
 # dist/ - commented out because we need dist for the CLI
+
+# Test files
+**/*.test.*
+**/*.spec.*
+**/__tests__/
+test/
+tests/
+coverage/
 
 # Dependencies
 node_modules/

@@ -3,7 +3,7 @@ import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
-import { WechatConfig, AccessTokenInfo, MediaInfo, PermanentMediaInfo, DraftInfo, PublishInfo } from '../mcp-tool/types.js';
+import { WechatConfig, AccessTokenInfo, MediaInfo } from '../mcp-tool/types.js';
 import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -149,7 +149,12 @@ export class StorageManager {
     if (!this.db) throw new Error('Database not initialized');
 
     const get = promisify(this.db.get.bind(this.db));
-    const row = await get('SELECT * FROM config WHERE id = 1') as any;
+    const row = await get('SELECT * FROM config WHERE id = 1') as {
+      app_id: string;
+      app_secret: string;
+      token?: string;
+      encoding_aes_key?: string;
+    } | undefined;
 
     if (!row) return null;
 
@@ -192,7 +197,11 @@ export class StorageManager {
     if (!this.db) throw new Error('Database not initialized');
 
     const get = promisify(this.db.get.bind(this.db));
-    const row = await get('SELECT * FROM access_tokens ORDER BY created_at DESC LIMIT 1') as any;
+    const row = await get('SELECT * FROM access_tokens ORDER BY created_at DESC LIMIT 1') as {
+      access_token: string;
+      expires_in: number;
+      expires_at: number;
+    } | undefined;
 
     if (!row) return null;
 
@@ -233,13 +242,18 @@ export class StorageManager {
     if (!this.db) throw new Error('Database not initialized');
 
     const get = promisify(this.db.get.bind(this.db));
-    const row = await get('SELECT * FROM media WHERE media_id = ?', [mediaId]) as any;
+    const row = await get('SELECT * FROM media WHERE media_id = ?', [mediaId]) as {
+      media_id: string;
+      type: string;
+      created_at: number;
+      url?: string;
+    } | undefined;
 
     if (!row) return null;
 
     return {
       mediaId: row.media_id,
-      type: row.type,
+      type: row.type as 'image' | 'voice' | 'video' | 'thumb',
       createdAt: row.created_at,
       url: row.url,
     };
@@ -257,11 +271,16 @@ export class StorageManager {
       : 'SELECT * FROM media ORDER BY created_at DESC';
     const params = type ? [type] : [];
     
-    const rows = await all(query, params) as any[];
+    const rows = await all(query, params) as Array<{
+      media_id: string;
+      type: string;
+      created_at: number;
+      url?: string;
+    }>;
 
     return rows.map(row => ({
       mediaId: row.media_id,
-      type: row.type,
+      type: row.type as 'image' | 'voice' | 'video' | 'thumb',
       createdAt: row.created_at,
       url: row.url,
     }));

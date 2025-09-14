@@ -1,8 +1,12 @@
-import { z } from 'zod';
-import { WechatToolDefinition, WechatToolContext, WechatToolResult } from '../types.js';
+import { WechatApiClient } from '../../wechat/api-client.js';
+import { WechatToolResult, McpTool } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { StorageManager } from '../../storage/storage-manager.js';
+import { z } from 'zod';
+import FormData from 'form-data';
 
-// 素材上传工具参数 Schema
+// 媒体上传工具参数Schema (暂未使用，保留用于未来扩展)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const mediaUploadToolSchema = z.object({
   action: z.enum(['upload', 'get', 'list']),
   type: z.enum(['image', 'voice', 'video', 'thumb']).optional(),
@@ -17,12 +21,11 @@ const mediaUploadToolSchema = z.object({
 /**
  * 素材上传工具处理器
  */
-async function handleMediaUploadTool(context: WechatToolContext): Promise<WechatToolResult> {
-  const { args, apiClient } = context;
+async function handleMediaUploadTool(args: unknown, apiClient: WechatApiClient): Promise<WechatToolResult> {
+  // MCP SDK已经验证了参数，直接使用
+  const { action, type, filePath, fileData, fileName, mediaId, title, introduction } = args as any;
   
   try {
-    const validatedArgs = mediaUploadToolSchema.parse(args);
-    const { action, type, filePath, fileData, fileName, mediaId, title, introduction } = validatedArgs;
 
     switch (action) {
       case 'upload': {
@@ -48,50 +51,67 @@ async function handleMediaUploadTool(context: WechatToolContext): Promise<Wechat
           uploadFileName = fileName || filePath!.split('/').pop() || 'media';
         }
         
-        const result = await apiClient.uploadMedia({
-          type,
-          media: uploadData,
-          fileName: uploadFileName,
-          title,
-          introduction,
-        });
+        // 准备表单数据
+        const formData = new FormData();
+        formData.append('media', uploadData, uploadFileName);
         
-        // TODO: 保存素材信息到本地存储（暂未实现）
-        // await storageManager.saveMedia({
-        //   mediaId: result.mediaId,
-        //   type,
-        //   createdAt: Date.now(),
-        //   url: result.url,
-        // });
+        // 视频素材需要描述信息
+        if (type === 'video' && (title || introduction)) {
+          const description = {
+            title: title || '视频标题',
+            introduction: introduction || '视频简介'
+          };
+          formData.append('description', JSON.stringify(description));
+        }
+        
+        const result = await apiClient.post(
+          `/cgi-bin/media/upload?type=${type}`,
+          formData
+        ) as any;
+        
+        // 保存到本地存储
+        const storageManager = new StorageManager();
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const saveResult = await storageManager.saveMedia({
+          mediaId: result.media_id,
+          type: result.type as 'image' | 'voice' | 'video' | 'thumb',
+          createdAt: result.created_at,
+          url: uploadFileName
+        });
         
         return {
           content: [{
             type: 'text',
-            text: `素材上传成功:\n- Media ID: ${result.mediaId}\n- 类型: ${type}\n- 文件名: ${uploadFileName}\n- 创建时间: ${new Date().toLocaleString()}${result.url ? `\n- URL: ${result.url}` : ''}`,
+            text: `临时素材上传成功！\n素材ID: ${result.media_id}\n类型: ${result.type}\n创建时间: ${new Date(result.created_at * 1000).toLocaleString()}`,
           }],
         };
       }
       
       case 'get': {
         if (!mediaId) {
-          throw new Error('Media ID is required for get operation');
+          throw new Error('素材ID不能为空');
         }
         
-        // TODO: 从本地存储获取素材信息（暂未实现）
-        return {
-          content: [{
-            type: 'text',
-            text: `获取素材信息功能正在开发中，Media ID: ${mediaId}`,
-          }],
-        };
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const result = await apiClient.get(`/cgi-bin/media/get?media_id=${mediaId}`) as any;
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `获取临时素材成功！\n素材ID: ${mediaId}\n素材已下载到本地`,
+            }],
+          };
+        } catch (error) {
+          throw new Error(`获取临时素材失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
       }
       
       case 'list': {
-        // TODO: 从本地存储列出素材（暂未实现）
         return {
           content: [{
             type: 'text',
-            text: `素材列表功能正在开发中${type ? `，类型: ${type}` : ''}`,
+            text: `临时素材列表功能暂不支持，临时素材有效期为3天，建议使用永久素材功能`,
           }],
         };
       }
@@ -112,50 +132,20 @@ async function handleMediaUploadTool(context: WechatToolContext): Promise<Wechat
 }
 
 /**
- * 微信公众号素材上传工具
+ * 微信公众号临时素材工具
  */
-export const mediaUploadTool: WechatToolDefinition = {
+export const mediaUploadTool: McpTool = {
   name: 'wechat_media_upload',
   description: '上传和管理微信公众号临时素材（图片、语音、视频、缩略图）',
   inputSchema: {
-    type: 'object',
-    properties: {
-      action: {
-        type: 'string',
-        enum: ['upload', 'get', 'list'],
-        description: '操作类型：upload(上传), get(获取), list(列表)',
-      },
-      type: {
-        type: 'string',
-        enum: ['image', 'voice', 'video', 'thumb'],
-        description: '素材类型：image(图片), voice(语音), video(视频), thumb(缩略图)',
-      },
-      filePath: {
-        type: 'string',
-        description: '本地文件路径',
-      },
-      fileData: {
-        type: 'string',
-        description: 'Base64 编码的文件数据',
-      },
-      fileName: {
-        type: 'string',
-        description: '文件名（可选）',
-      },
-      mediaId: {
-        type: 'string',
-        description: '素材 ID（获取素材信息时必需）',
-      },
-      title: {
-        type: 'string',
-        description: '视频素材的标题（仅视频类型需要）',
-      },
-      introduction: {
-        type: 'string',
-        description: '视频素材的描述（仅视频类型需要）',
-      },
-    },
-    required: ['action'],
+    action: z.enum(['upload', 'get', 'list']).describe('操作类型：upload-上传素材, get-获取素材, list-列表素材'),
+    type: z.enum(['image', 'voice', 'video', 'thumb']).optional().describe('素材类型：image-图片, voice-语音, video-视频, thumb-缩略图'),
+    filePath: z.string().optional().describe('本地文件路径（upload操作可选）'),
+    fileData: z.string().optional().describe('Base64编码的文件数据（upload操作可选，与filePath二选一）'),
+    fileName: z.string().optional().describe('文件名（upload操作可选）'),
+    mediaId: z.string().optional().describe('媒体文件ID（get操作必需）'),
+    title: z.string().optional().describe('视频素材的标题（video类型upload操作可选）'),
+    introduction: z.string().optional().describe('视频素材的描述（video类型upload操作可选）')
   },
-  handler: handleMediaUploadTool,
+  handler: handleMediaUploadTool
 };

@@ -1,10 +1,9 @@
-import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WechatApiClient } from '../wechat/api-client.js';
 import { AuthManager } from '../auth/auth-manager.js';
 import { logger } from '../utils/logger.js';
-import { wechatTools } from './tools/index.js';
-import { WechatToolResult, WechatToolArgs } from './types.js';
+import { wechatTools, mcpTools } from './tools/index.js';
+import { WechatToolResult, WechatToolArgs, McpTool } from './types.js';
 
 /**
  * 微信公众号 MCP 工具管理器
@@ -33,8 +32,8 @@ export class WechatMcpTool {
     if (tools && tools.length > 0) {
       this.enabledTools = tools;
     } else {
-      // 默认启用所有工具
-      this.enabledTools = wechatTools.map(tool => tool.name);
+      // 默认启用所有工具（包括微信工具和MCP工具）
+      this.enabledTools = [...wechatTools.map(tool => tool.name), ...mcpTools.map(tool => tool.name)];
     }
 
     this.initialized = true;
@@ -42,20 +41,13 @@ export class WechatMcpTool {
   }
 
   /**
-   * 获取所有可用工具
+   * 获取所有可用的工具
    */
-  getTools(): Tool[] {
+  getTools(): McpTool[] {
     if (!this.initialized) {
       this.initialize();
     }
-
-    return wechatTools
-      .filter(tool => this.enabledTools.includes(tool.name))
-      .map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      }));
+    return mcpTools;
   }
 
   /**
@@ -76,7 +68,7 @@ export class WechatMcpTool {
     }
 
     try {
-      logger.info(`Calling tool: ${name}`, { args });
+      logger.info(`Calling tool: ${name}`, { args, argsType: typeof args, argsKeys: Object.keys(args || {}) });
       const result = await tool.handler({
         args,
         apiClient: this.apiClient,
@@ -105,20 +97,34 @@ export class WechatMcpTool {
       server.registerTool(
         tool.name,
         {
-          description: tool.description
-          // Note: inputSchema will be handled by the MCP protocol automatically
+          description: tool.description,
+          inputSchema: tool.inputSchema
         },
-        async (args) => {
-          const result = await this.callTool(tool.name, args);
-          return {
-            content: result.content,
-            isError: result.isError
-          };
+        async (params: unknown) => {
+          try {
+            console.log(`[WechatMcpTool] Calling tool: ${tool.name}`);
+            console.log(`[WechatMcpTool] Params type: ${typeof params}`);
+            console.log(`[WechatMcpTool] Params keys: ${Object.keys(params || {})}`);
+            console.log(`[WechatMcpTool] Params:`, JSON.stringify(params, null, 2));
+            
+            const result = await tool.handler(params, this.apiClient);
+            console.log(`[WechatMcpTool] Tool ${tool.name} result:`, result);
+            return result;
+          } catch (error) {
+            console.error(`[WechatMcpTool] Error in tool ${tool.name}:`, error);
+            return {
+              content: [{
+                type: 'text' as const,
+                text: `Error: ${error instanceof Error ? error.message : String(error)}`
+              }]
+            };
+          }
         }
       );
     }
 
-    logger.info(`Registered ${tools.length} tools to MCP server`);
+    this.enabledTools = tools.map(tool => tool.name);
+    console.log(`[WechatMcpTool] Registered ${tools.length} tools to MCP server`);
   }
 
   /**

@@ -32,7 +32,7 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
     const { action } = validatedArgs;
 
     switch (action) {
-      case 'add':
+      case 'add': {
         const { articles } = validatedArgs;
         
         if (!articles || articles.length === 0) {
@@ -52,7 +52,7 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
               need_open_comment: article.needOpenComment || 0,
               only_fans_can_comment: article.onlyFansCanComment || 0,
             }))
-          });
+          }) as any;
           
           return {
             content: [{
@@ -63,8 +63,9 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         } catch (error) {
           throw new Error(`创建草稿失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'get':
+      case 'get': {
         const { mediaId } = validatedArgs;
         
         if (!mediaId) {
@@ -74,7 +75,7 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         try {
           const result = await apiClient.post('/cgi-bin/draft/get', {
             media_id: mediaId
-          });
+          }) as any;
           
           const articles = result.news_item.map((item: any, index: number) => 
             `第${index + 1}篇:\n` +
@@ -96,8 +97,9 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         } catch (error) {
           throw new Error(`获取草稿失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'delete':
+      case 'delete': {
         const { mediaId: deleteMediaId } = validatedArgs;
         
         if (!deleteMediaId) {
@@ -107,7 +109,7 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         try {
           await apiClient.post('/cgi-bin/draft/delete', {
             media_id: deleteMediaId
-          });
+          }) as any;
           
           return {
             content: [{
@@ -118,15 +120,16 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         } catch (error) {
           throw new Error(`删除草稿失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'list':
+      case 'list': {
         const { offset = 0, count = 20 } = validatedArgs;
         
         try {
           const result = await apiClient.post('/cgi-bin/draft/batchget', {
             offset,
             count
-          });
+          }) as any;
           
           const draftList = result.item.map((item: any, index: number) => {
             const firstArticle = item.content.news_item[0];
@@ -148,10 +151,11 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         } catch (error) {
           throw new Error(`获取草稿列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'count':
+      case 'count': {
         try {
-          const result = await apiClient.post('/cgi-bin/draft/count');
+          const result = await apiClient.post('/cgi-bin/draft/count') as any;
           
           return {
             content: [{
@@ -162,6 +166,7 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
         } catch (error) {
           throw new Error(`获取草稿统计失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
       default:
         throw new Error(`Unknown action: ${action}`);

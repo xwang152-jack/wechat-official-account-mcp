@@ -217,7 +217,7 @@ export class WechatApiClient {
   /**
    * 通用 GET 请求
    */
-  async get(path: string, params?: Record<string, any>): Promise<any> {
+  async get(path: string, params?: Record<string, unknown>): Promise<unknown> {
     try {
       const response = await this.httpClient.get(path, { params });
       
@@ -235,7 +235,7 @@ export class WechatApiClient {
   /**
    * 通用 POST 请求
    */
-  async post(path: string, data?: any): Promise<any> {
+  async post(path: string, data?: unknown): Promise<unknown> {
     try {
       const response = await this.httpClient.post(path, data);
       

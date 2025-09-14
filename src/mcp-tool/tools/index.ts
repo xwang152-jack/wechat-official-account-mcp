@@ -1,4 +1,4 @@
-import { WechatToolDefinition } from '../types.js';
+import { WechatToolDefinition, McpTool } from '../types.js';
 import { authTool } from './auth-tool.js';
 import { mediaUploadTool } from './media-upload-tool.js';
 import { uploadImgTool } from './upload-img-tool.js';
@@ -11,11 +11,17 @@ import { publishTool } from './publish-tool.js';
  */
 export const wechatTools: WechatToolDefinition[] = [
   authTool,
-  mediaUploadTool,
-  uploadImgTool,
-  permanentMediaTool,
   draftTool,
   publishTool,
+];
+
+/**
+ * MCP工具列表
+ */
+export const mcpTools: McpTool[] = [
+  permanentMediaTool,
+  mediaUploadTool,
+  uploadImgTool,
 ];
 
 export {

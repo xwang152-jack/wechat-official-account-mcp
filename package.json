@@ -35,13 +35,19 @@
     "url": "https://github.com/xwang152-jack/wechat-official-account-mcp/issues"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc",
+    "build:prod": "npm run clean && tsc --project tsconfig.prod.json",
     "dev": "tsx src/cli.ts",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run build:prod",
     "lint": "eslint .",
     "check": "tsc --noEmit",
     "test": "jest",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "pack:test": "./scripts/pack-test.sh",
+    "pack:dry": "npm pack --dry-run",
+    "start": "node dist/src/cli.js",
+    "postbuild": "chmod +x dist/src/cli.js",
+    "build:full": "./scripts/build.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -71,7 +77,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/multer": "^1.4.11",
-    "@types/node": "^22.15.30",
+    "@types/node": "^22.18.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/sqlite3": "^3.1.11",

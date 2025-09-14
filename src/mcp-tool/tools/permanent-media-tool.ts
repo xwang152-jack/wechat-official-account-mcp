@@ -1,8 +1,11 @@
 import { z } from 'zod';
-import { WechatToolDefinition, WechatToolContext, WechatToolResult } from '../types.js';
+import { WechatToolResult, McpTool } from '../types.js';
+import { WechatApiClient } from '../../wechat/api-client.js';
 import { logger } from '../../utils/logger.js';
+import FormData from 'form-data';
 
-// 永久素材工具参数 Schema
+// 永久素材工具参数Schema (暂未使用，保留用于未来扩展)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const permanentMediaToolSchema = z.object({
   action: z.enum(['add', 'get', 'delete', 'list', 'count']),
   type: z.enum(['image', 'voice', 'video', 'thumb', 'news']).optional(),
@@ -19,16 +22,15 @@ const permanentMediaToolSchema = z.object({
 /**
  * 永久素材工具处理器
  */
-async function handlePermanentMediaTool(context: WechatToolContext): Promise<WechatToolResult> {
-  const { args, apiClient } = context;
+async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClient): Promise<WechatToolResult> {
+  // MCP SDK已经验证了参数，直接使用
+  const { action } = args as any;
   
   try {
-    const validatedArgs = permanentMediaToolSchema.parse(args);
-    const { action } = validatedArgs;
 
     switch (action) {
-      case 'add':
-        const { type, filePath, fileData, fileName, title, introduction } = validatedArgs;
+      case 'add': {
+        const { type, filePath, fileData, fileName, title, introduction } = args as any;
         
         if (!type) {
           throw new Error('素材类型不能为空');
@@ -59,7 +61,6 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
           const result = await apiClient.post(
             `/cgi-bin/material/add_material?type=${type}`,
             (() => {
-              const FormData = require('form-data');
               const formData = new FormData();
               formData.append('media', mediaBuffer, actualFileName);
               
@@ -74,7 +75,7 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
               
               return formData;
             })()
-          );
+          ) as any;
           
           return {
             content: [{
@@ -85,9 +86,10 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         } catch (error) {
           throw new Error(`上传永久素材失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'get':
-        const { mediaId } = validatedArgs;
+      case 'get': {
+        const { mediaId } = args as any;
         
         if (!mediaId) {
           throw new Error('素材ID不能为空');
@@ -96,7 +98,7 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         try {
           const result = await apiClient.post('/cgi-bin/material/get_material', {
             media_id: mediaId
-          });
+          }) as any;
           
           // 如果是图文素材，返回详细信息
           if (result.news_item) {
@@ -127,9 +129,10 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         } catch (error) {
           throw new Error(`获取永久素材失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'delete':
-        const { mediaId: deleteMediaId } = validatedArgs;
+      case 'delete': {
+        const { mediaId: deleteMediaId } = args as any;
         
         if (!deleteMediaId) {
           throw new Error('素材ID不能为空');
@@ -138,7 +141,7 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         try {
           await apiClient.post('/cgi-bin/material/del_material', {
             media_id: deleteMediaId
-          });
+          }) as any;
           
           return {
             content: [{
@@ -149,9 +152,10 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         } catch (error) {
           throw new Error(`删除永久素材失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'list':
-        const { type: listType, offset = 0, count = 20 } = validatedArgs;
+      case 'list': {
+        const { type: listType, offset = 0, count = 20 } = args as any;
         
         if (!listType) {
           throw new Error('素材类型不能为空');
@@ -162,7 +166,7 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
             type: listType,
             offset,
             count
-          });
+          }) as any;
           
           if (listType === 'news') {
             // 图文素材列表
@@ -200,10 +204,11 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         } catch (error) {
           throw new Error(`获取永久素材列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
-      case 'count':
+      case 'count': {
         try {
-          const result = await apiClient.get('/cgi-bin/material/get_materialcount');
+          const result = await apiClient.get('/cgi-bin/material/get_materialcount') as any;
           
           return {
             content: [{
@@ -218,6 +223,7 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
         } catch (error) {
           throw new Error(`获取永久素材统计失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
+      }
       
       default:
         throw new Error(`Unknown action: ${action}`);
@@ -237,28 +243,20 @@ async function handlePermanentMediaTool(context: WechatToolContext): Promise<Wec
 /**
  * 微信公众号永久素材工具
  */
-export const permanentMediaTool: WechatToolDefinition = {
+export const permanentMediaTool: McpTool = {
   name: 'wechat_permanent_media',
-  description: '管理微信公众号永久素材',
+  description: '管理微信公众号永久素材，支持添加、获取、删除、列表和统计操作',
   inputSchema: {
-    type: 'object',
-    properties: {
-      action: {
-        type: 'string',
-        enum: ['add', 'get', 'delete', 'list', 'count'],
-        description: '操作类型',
-      },
-      type: {
-        type: 'string',
-        enum: ['image', 'voice', 'video', 'thumb', 'news'],
-        description: '素材类型',
-      },
-      mediaId: {
-        type: 'string',
-        description: '素材 ID',
-      },
-    },
-    required: ['action'],
+    action: z.enum(['add', 'get', 'delete', 'list', 'count']).describe('操作类型：add-添加素材, get-获取素材, delete-删除素材, list-获取素材列表, count-获取素材总数'),
+    type: z.enum(['image', 'voice', 'video', 'thumb']).optional().describe('素材类型：image-图片, voice-语音, video-视频, thumb-缩略图'),
+    mediaId: z.string().optional().describe('媒体文件ID（get和delete操作必需）'),
+    filePath: z.string().optional().describe('本地文件路径（add操作必需）'),
+    fileData: z.string().optional().describe('Base64编码的文件数据（add操作可选，与filePath二选一）'),
+    fileName: z.string().optional().describe('文件名（add操作可选）'),
+    title: z.string().optional().describe('视频素材的标题（video类型add操作必需）'),
+    introduction: z.string().optional().describe('视频素材的描述（video类型add操作必需）'),
+    offset: z.number().optional().describe('从全部素材中的该偏移位置开始返回（list操作可选，默认0）'),
+    count: z.number().optional().describe('返回素材的数量（list操作可选，默认20，最大20）')
   },
-  handler: handlePermanentMediaTool,
+  handler: handlePermanentMediaTool
 };
