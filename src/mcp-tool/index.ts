@@ -32,8 +32,8 @@ export class WechatMcpTool {
     if (tools && tools.length > 0) {
       this.enabledTools = tools;
     } else {
-      // 默认启用所有工具（包括微信工具和MCP工具）
-      this.enabledTools = [...wechatTools.map(tool => tool.name), ...mcpTools.map(tool => tool.name)];
+      // 默认启用所有MCP工具
+      this.enabledTools = mcpTools.map(tool => tool.name);
     }
 
     this.initialized = true;
@@ -62,24 +62,39 @@ export class WechatMcpTool {
       throw new Error(`Tool '${name}' is not enabled`);
     }
 
-    const tool = wechatTools.find(t => t.name === name);
-    if (!tool) {
-      throw new Error(`Tool '${name}' not found`);
+    // 首先从mcpTools中查找
+    const mcpTool = mcpTools.find(t => t.name === name);
+    if (mcpTool) {
+      try {
+        logger.info(`Calling MCP tool: ${name}`, { args, argsType: typeof args, argsKeys: Object.keys(args || {}) });
+        const result = await mcpTool.handler(args, this.apiClient);
+        logger.info(`MCP Tool '${name}' executed successfully`);
+        return result;
+      } catch (error) {
+        logger.error(`MCP Tool '${name}' execution failed:`, error);
+        throw error;
+      }
     }
 
-    try {
-      logger.info(`Calling tool: ${name}`, { args, argsType: typeof args, argsKeys: Object.keys(args || {}) });
-      const result = await tool.handler({
-        args,
-        apiClient: this.apiClient,
-        authManager: this.authManager,
-      });
-      logger.info(`Tool '${name}' executed successfully`);
-      return result;
-    } catch (error) {
-      logger.error(`Tool '${name}' execution failed:`, error);
-      throw error;
+    // 如果在mcpTools中没找到，再从wechatTools中查找（向后兼容）
+    const wechatTool = wechatTools.find(t => t.name === name);
+    if (wechatTool) {
+      try {
+        logger.info(`Calling WeChat tool: ${name}`, { args, argsType: typeof args, argsKeys: Object.keys(args || {}) });
+        const result = await wechatTool.handler({
+          args,
+          apiClient: this.apiClient,
+          authManager: this.authManager,
+        });
+        logger.info(`WeChat Tool '${name}' executed successfully`);
+        return result;
+      } catch (error) {
+        logger.error(`WeChat Tool '${name}' execution failed:`, error);
+        throw error;
+      }
     }
+
+    throw new Error(`Tool '${name}' not found`);
   }
 
   /**

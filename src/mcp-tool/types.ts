@@ -2,6 +2,9 @@ import { WechatApiClient } from '../wechat/api-client.js';
 import { AuthManager } from '../auth/auth-manager.js';
 import { ZodRawShape } from 'zod';
 
+// 重新导出 WechatApiClient 类型
+export { WechatApiClient };
+
 /**
  * 微信工具参数类型
  */

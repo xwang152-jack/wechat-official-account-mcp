@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { WechatToolDefinition, WechatToolContext, WechatToolResult } from '../types.js';
+import { WechatToolDefinition, WechatToolContext, WechatToolResult, McpTool, WechatApiClient } from '../types.js';
 import { logger } from '../../utils/logger.js';
 
 // 认证工具参数 Schema
@@ -101,6 +101,21 @@ async function handleAuthTool(context: WechatToolContext): Promise<WechatToolRes
 }
 
 /**
+ * MCP认证工具处理器
+ */
+async function handleAuthMcpTool(args: any, apiClient: WechatApiClient): Promise<WechatToolResult> {
+  // 注意：这里需要从外部传入authManager，因为WechatApiClient没有公开getAuthManager方法
+  // 暂时返回错误信息，需要重新设计这个接口
+  return {
+    content: [{
+      type: 'text',
+      text: 'Auth tool not available in MCP mode - requires authManager access'
+    }],
+    isError: true
+  };
+}
+
+/**
  * 微信公众号认证工具
  */
 export const authTool: WechatToolDefinition = {
@@ -134,4 +149,20 @@ export const authTool: WechatToolDefinition = {
     required: ['action'],
   },
   handler: handleAuthTool,
+};
+
+/**
+ * MCP认证工具
+ */
+export const authMcpTool: McpTool = {
+  name: 'wechat_auth',
+  description: '管理微信公众号认证配置和 Access Token',
+  inputSchema: {
+    action: z.enum(['configure', 'get_token', 'refresh_token', 'get_config']).describe('操作类型：configure(配置), get_token(获取令牌), refresh_token(刷新令牌), get_config(获取配置)'),
+    appId: z.string().optional().describe('微信公众号 AppID（配置时必需）'),
+    appSecret: z.string().optional().describe('微信公众号 AppSecret（配置时必需）'),
+    token: z.string().optional().describe('微信公众号 Token（可选，用于消息验证）'),
+    encodingAESKey: z.string().optional().describe('微信公众号 EncodingAESKey（可选，用于消息加密）'),
+  },
+  handler: handleAuthMcpTool,
 };
