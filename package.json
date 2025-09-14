@@ -1,6 +1,6 @@
 {
   "name": "wechat-official-account-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "description": "微信公众号 MCP 服务 - 为 AI 应用提供微信公众号 API 集成",
   "keywords": [
