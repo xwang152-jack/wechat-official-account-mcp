@@ -231,25 +231,38 @@ src/
 
 ```json
 {
-  "command": "npx",
-  "args": [
-    "wechat-official-account-mcp",
-    "mcp",
-    "-a", "your_wechat_app_id",
-    "-s", "your_wechat_app_secret"
-  ]
+  "mcpServers": {
+    "wechat-official-account": {
+      "command": "npx",
+      "args": [
+        "wechat-official-account-mcp",
+        "mcp",
+        "-a", "your_wechat_app_id",
+        "-s", "your_wechat_app_secret"
+      ]
+    }
+  }
 }
 ```
 
-### 环境变量配置（可选）
+或者使用全局安装的版本：
 
-您也可以通过环境变量配置微信公众号信息：
-
-```bash
-export WECHAT_APP_ID=your_wechat_app_id
-export WECHAT_APP_SECRET=your_wechat_app_secret
-npx wechat-official-account-mcp mcp
+```json
+{
+  "mcpServers": {
+    "wechat-official-account": {
+      "command": "wechat-mcp",
+      "args": [
+        "mcp",
+        "-a", "your_wechat_app_id",
+        "-s", "your_wechat_app_secret"
+      ]
+    }
+  }
+}
 ```
+
+
 
 ## 🧪 开发指南
 
