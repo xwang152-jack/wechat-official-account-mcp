@@ -1,6 +1,7 @@
 # 微信公众号 MCP 服务
 
 一个为 AI 应用提供微信公众号 API 集成的 MCP (Model Context Protocol) 服务项目。
+一定要设置白名单！！！
 
 **作者**: xwang152-jack <xwang152@163.com>  
 **更新日期**: 2025年9月14日
