@@ -1,14 +1,15 @@
 # 微信公众号 MCP 服务
 
 一个为 AI 应用提供微信公众号 API 集成的 MCP (Model Context Protocol) 服务项目。
-一定要设置白名单！！！
 
 **作者**: xwang152-jack <xwang152@163.com>  
-**更新日期**: 2025年9月14日
+**更新日期**: 2025年11月20日
 
 ## 🚀 项目概述
 
 本项目基于 MCP 协议，为 AI 应用（如 Claude Desktop、Cursor、Trae AI 等）提供微信公众号 API 的无缝集成。通过标准化的工具接口，AI 应用可以轻松地管理微信公众号的素材、草稿、发布等功能。
+
+当前版本：`v1.1.0`（查看 [CHANGELOG](./CHANGELOG.md) 与 [Release 说明](./RELEASE_NOTES_v1.1.0.md)）
 
 ## ✨ 核心功能
 
@@ -18,6 +19,7 @@
 - **📢 发布管理**: 发布草稿到微信公众号
 - **💾 本地存储**: 使用 SQLite 本地存储配置和数据
 - **🔧 MCP 集成**: 完全兼容 MCP 协议标准
+ - **🛡️ 安全增强（v1.1.0）**: 支持敏感字段加密存储与日志脱敏，跨域来源白名单配置
 
 ## 🛠️ 技术栈
 
@@ -42,6 +44,8 @@ npx wechat-official-account-mcp mcp -a <your_app_id> -s <your_app_secret>
 # 示例
 npx wechat-official-account-mcp mcp -a wx1234567890abcdef -s your_app_secret_here
 ```
+
+> 提示：如使用 SSE 模式，请设置 `CORS_ORIGIN` 为允许访问的域名白名单。
 
 ### 方式二：全局安装
 
@@ -78,6 +82,10 @@ node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
 - `-p, --port <port>`: SSE 模式下的端口号（默认 3000）
 - `-h, --help`: 显示帮助信息
 
+环境变量（常用）：
+- `CORS_ORIGIN`: 逗号分隔的跨域来源白名单（示例：`https://a.example.com,https://b.example.com`）
+- `WECHAT_MCP_SECRET_KEY`: 开启敏感字段加密存储（AES），设置即启用
+
 ## 🔧 MCP 工具列表
 
 ### 1. 认证工具 (`wechat_auth`)
@@ -97,7 +105,7 @@ node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
 **支持操作**:
 - `upload`: 上传素材（图片、语音、视频、缩略图）
 - `get`: 获取素材信息
-- `list`: 列出所有素材
+- `list`: 暂不支持（临时素材有效期 3 天，建议使用永久素材功能）
 
 **支持格式**:
 - 图片：JPG、PNG（大小不超过 10MB）
@@ -316,11 +324,17 @@ node dist/src/cli.js --help
 创建 `.env` 文件：
 
 ```env
-# 开发模式
+# 开发模式（可选）
 NODE_ENV=development
 
-# 调试模式
+# 调试模式（可选）
 DEBUG=true
+
+# 跨域来源白名单（强烈建议生产环境设置）
+CORS_ORIGIN=https://your-domain.com,https://another-domain.com
+
+# 开启敏感字段加密（设置后启用 AES 加密存储）
+WECHAT_MCP_SECRET_KEY=your-strong-secret-key
 
 # 数据库路径（可选，默认为 ./data/wechat-mcp.db）
 DB_PATH=./data/wechat-mcp.db
@@ -335,10 +349,11 @@ DB_PATH=./data/wechat-mcp.db
 
 ## 🔒 安全说明
 
-- AppSecret 等敏感信息使用 SQLite 本地存储
-- Access Token 自动管理和刷新
-- 所有 API 调用都经过错误处理和日志记录
-- 支持参数验证和类型检查
+- 加密存储：设置 `WECHAT_MCP_SECRET_KEY` 后，`app_secret/token/encoding_aes_key/access_token` 以加密形式持久化（带 `enc:` 前缀标识）
+- 日志脱敏：错误日志仅记录状态码或消息，避免泄露响应体与敏感信息
+- 跨域白名单：生产环境务必设置 `CORS_ORIGIN` 为精确域名列表，避免 `*`
+- 参数校验：工具参数使用 Zod 校验，降低不当输入风险
+- 切勿提交密钥：不要将 AppSecret、Token 等放入代码仓库或构建产物
 
 ## 🤝 贡献指南
 
