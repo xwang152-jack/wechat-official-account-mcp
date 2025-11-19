@@ -1,16 +1,26 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { readFileSync } from 'fs';
 import { initMcpServerWithTransport } from './mcp-server/shared/init.js';
 import { logger } from './mcp-server/shared/logger.js';
 import { McpServerOptions } from './mcp-server/shared/types.js';
 
 const program = new Command();
 
+function getVersion(): string {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
+    return pkg.version || '1.0.0';
+  } catch {
+    return '1.0.0';
+  }
+}
+
 program
   .name('wechat-mcp')
   .description('WeChat Official Account MCP Server')
-  .version('1.0.0');
+  .version(getVersion());
 
 program
   .command('mcp')
@@ -50,7 +60,7 @@ program
   .command('version')
   .description('Show version information')
   .action(() => {
-    console.log('WeChat Official Account MCP Server v1.0.0');
+    console.log(`WeChat Official Account MCP Server v${getVersion()}`);
   });
 
 program
