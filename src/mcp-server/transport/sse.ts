@@ -22,7 +22,7 @@ export const initSSEServer: InitTransportServerFunction = async (
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
       'Access-Control-Allow-Headers': 'Cache-Control'
     });
 

@@ -69,13 +69,13 @@ async function handleMediaUploadTool(args: unknown, apiClient: WechatApiClient):
           formData
         ) as any;
         
-        // 保存到本地存储
+        // 保存到本地存储（确保已初始化数据库）
         const storageManager = new StorageManager();
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        await storageManager.initialize();
         const saveResult = await storageManager.saveMedia({
           mediaId: result.media_id,
           type: result.type as 'image' | 'voice' | 'video' | 'thumb',
-          createdAt: result.created_at,
+          createdAt: result.created_at * 1000,
           url: uploadFileName
         });
         

@@ -104,15 +104,74 @@ async function handleAuthTool(context: WechatToolContext): Promise<WechatToolRes
  * MCP认证工具处理器
  */
 async function handleAuthMcpTool(args: any, apiClient: WechatApiClient): Promise<WechatToolResult> {
-  // 注意：这里需要从外部传入authManager，因为WechatApiClient没有公开getAuthManager方法
-  // 暂时返回错误信息，需要重新设计这个接口
-  return {
-    content: [{
-      type: 'text',
-      text: 'Auth tool not available in MCP mode - requires authManager access'
-    }],
-    isError: true
-  };
+  try {
+    const validatedArgs = authToolSchema.parse(args);
+    const { action, appId, appSecret, token, encodingAESKey } = validatedArgs;
+    const authManager = apiClient.getAuthManager();
+
+    switch (action) {
+      case 'configure': {
+        if (!appId || !appSecret) {
+          throw new Error('appId and appSecret are required for configuration');
+        }
+        await authManager.setConfig({ appId, appSecret, token, encodingAESKey });
+        return {
+          content: [{
+            type: 'text',
+            text: `微信公众号配置已成功保存\n- AppID: ${appId}\n- Token: ${token || '未设置'}\n- EncodingAESKey: ${encodingAESKey || '未设置'}`,
+          }],
+        };
+      }
+      case 'get_token': {
+        const tokenInfo = await authManager.getAccessToken();
+        const expiresIn = Math.max(0, Math.floor((tokenInfo.expiresAt - Date.now()) / 1000));
+        return {
+          content: [{
+            type: 'text',
+            text: `Access Token 信息:\n- Token: ${tokenInfo.accessToken}\n- 剩余有效时间: ${expiresIn} 秒\n- 过期时间: ${new Date(tokenInfo.expiresAt).toLocaleString()}`,
+          }],
+        };
+      }
+      case 'refresh_token': {
+        const tokenInfo = await authManager.refreshAccessToken();
+        const expiresIn = Math.max(0, Math.floor((tokenInfo.expiresAt - Date.now()) / 1000));
+        return {
+          content: [{
+            type: 'text',
+            text: `Access Token 已刷新:\n- 新 Token: ${tokenInfo.accessToken}\n- 有效时间: ${expiresIn} 秒\n- 过期时间: ${new Date(tokenInfo.expiresAt).toLocaleString()}`,
+          }],
+        };
+      }
+      case 'get_config': {
+        const config = await authManager.getConfig();
+        if (!config) {
+          return {
+            content: [{
+              type: 'text',
+              text: '尚未配置微信公众号信息，请先使用 configure 操作进行配置。',
+            }],
+          };
+        }
+        return {
+          content: [{
+            type: 'text',
+            text: `当前微信公众号配置:\n- AppID: ${config.appId}\n- AppSecret: ${config.appSecret.substring(0, 8)}...\n- Token: ${config.token || '未设置'}\n- EncodingAESKey: ${config.encodingAESKey || '未设置'}`,
+          }],
+        };
+      }
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+  } catch (error) {
+    logger.error('Auth MCP tool error:', error);
+    return {
+      content: [{
+        type: 'text',
+        text: `认证操作失败: ${error instanceof Error ? error.message : '未知错误'}`,
+      }],
+      isError: true,
+    };
+  }
 }
 
 /**

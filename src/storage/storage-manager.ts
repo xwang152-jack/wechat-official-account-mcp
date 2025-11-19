@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
+import CryptoJS from 'crypto-js';
 import { WechatConfig, AccessTokenInfo, MediaInfo } from '../mcp-tool/types.js';
 import { logger } from '../utils/logger.js';
 
@@ -16,9 +17,11 @@ const __dirname = path.dirname(__filename);
 export class StorageManager {
   private db: sqlite3.Database | null = null;
   private dbPath: string;
+  private secretKey: string | undefined;
 
   constructor() {
     this.dbPath = path.join(__dirname, '../../data/wechat-mcp.db');
+    this.secretKey = process.env.WECHAT_MCP_SECRET_KEY;
   }
 
   /**
@@ -126,6 +129,27 @@ export class StorageManager {
     `);
   }
 
+  private encryptValue(value: string | null | undefined): string | null {
+    if (!value) return null;
+    if (!this.secretKey) return value;
+    const cipher = CryptoJS.AES.encrypt(value, this.secretKey).toString();
+    return `enc:${cipher}`;
+  }
+
+  private decryptValue(value: string | null | undefined): string | null {
+    if (!value) return null;
+    if (!this.secretKey) return value;
+    if (!value.startsWith('enc:')) return value;
+    const cipher = value.slice(4);
+    try {
+      const bytes = CryptoJS.AES.decrypt(cipher, this.secretKey);
+      const text = bytes.toString(CryptoJS.enc.Utf8);
+      return text || null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * 保存配置
    */
@@ -138,7 +162,14 @@ export class StorageManager {
     await run(
       `INSERT OR REPLACE INTO config (id, app_id, app_secret, token, encoding_aes_key, created_at, updated_at) 
        VALUES (1, ?, ?, ?, ?, ?, ?)`,
-      [config.appId, config.appSecret, config.token || null, config.encodingAESKey || null, now, now]
+      [
+        config.appId,
+        this.encryptValue(config.appSecret),
+        this.encryptValue(config.token || null),
+        this.encryptValue(config.encodingAESKey || null),
+        now,
+        now,
+      ]
     );
   }
 
@@ -160,9 +191,9 @@ export class StorageManager {
 
     return {
       appId: row.app_id,
-      appSecret: row.app_secret,
-      token: row.token,
-      encodingAESKey: row.encoding_aes_key,
+      appSecret: this.decryptValue(row.app_secret) || row.app_secret,
+      token: this.decryptValue(row.token) || row.token,
+      encodingAESKey: this.decryptValue(row.encoding_aes_key) || row.encoding_aes_key,
     };
   }
 
@@ -183,10 +214,10 @@ export class StorageManager {
     if (!this.db) throw new Error('Database not initialized');
 
     const run = promisify(this.db.run.bind(this.db));
-    await run('DELETE FROM access_tokens'); // 清除旧的 token
+    await run('DELETE FROM access_tokens');
     await run(
       'INSERT INTO access_tokens (access_token, expires_in, expires_at, created_at) VALUES (?, ?, ?, ?)',
-      [tokenInfo.accessToken, tokenInfo.expiresIn, tokenInfo.expiresAt, Date.now()]
+      [this.encryptValue(tokenInfo.accessToken), tokenInfo.expiresIn, tokenInfo.expiresAt, Date.now()]
     );
   }
 
@@ -206,7 +237,7 @@ export class StorageManager {
     if (!row) return null;
 
     return {
-      accessToken: row.access_token,
+      accessToken: this.decryptValue(row.access_token) || row.access_token,
       expiresIn: row.expires_in,
       expiresAt: row.expires_at,
     };

@@ -32,10 +32,15 @@ export class WechatApiClient {
     this.httpClient.interceptors.response.use(
       (response) => response,
       (error) => {
-        logger.error('Wechat API request failed:', error.response?.data || error.message);
+        const status = error?.response?.status;
+        logger.error('Wechat API request failed:', status ? String(status) : error?.message);
         throw error;
       }
     );
+  }
+
+  getAuthManager(): AuthManager {
+    return this.authManager;
   }
 
   /**
@@ -81,7 +86,7 @@ export class WechatApiClient {
         url: response.data.url,
       };
     } catch (error) {
-      logger.error('Failed to upload media:', error);
+      logger.error('Failed to upload media:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -100,7 +105,7 @@ export class WechatApiClient {
 
       return Buffer.from(response.data);
     } catch (error) {
-      logger.error('Failed to get media:', error);
+      logger.error('Failed to get media:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -132,7 +137,7 @@ export class WechatApiClient {
         mediaId: response.data.media_id,
       };
     } catch (error) {
-      logger.error('Failed to add news:', error);
+      logger.error('Failed to add news:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -164,7 +169,7 @@ export class WechatApiClient {
         mediaId: response.data.media_id,
       };
     } catch (error) {
-      logger.error('Failed to add draft:', error);
+      logger.error('Failed to add draft:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -187,7 +192,7 @@ export class WechatApiClient {
         msgDataId: response.data.msg_data_id,
       };
     } catch (error) {
-      logger.error('Failed to publish draft:', error);
+      logger.error('Failed to publish draft:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -209,7 +214,7 @@ export class WechatApiClient {
 
       return response.data;
     } catch (error) {
-      logger.error('Failed to upload image:', error);
+      logger.error('Failed to upload image:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -227,7 +232,7 @@ export class WechatApiClient {
       
       return response.data;
     } catch (error) {
-      logger.error(`GET ${path} failed:`, error);
+      logger.error(`GET ${path} failed:`, (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -245,7 +250,7 @@ export class WechatApiClient {
       
       return response.data;
     } catch (error) {
-      logger.error(`POST ${path} failed:`, error);
+      logger.error(`POST ${path} failed:`, (error as any)?.message ?? String(error));
       throw error;
     }
   }
