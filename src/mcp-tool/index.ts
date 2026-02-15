@@ -117,16 +117,17 @@ export class WechatMcpTool {
         },
         async (params: unknown) => {
           try {
-            console.log(`[WechatMcpTool] Calling tool: ${tool.name}`);
-            console.log(`[WechatMcpTool] Params type: ${typeof params}`);
-            console.log(`[WechatMcpTool] Params keys: ${Object.keys(params || {})}`);
-            console.log(`[WechatMcpTool] Params:`, JSON.stringify(params, null, 2));
-            
+            logger.debug(`[WechatMcpTool] Calling tool: ${tool.name}`);
+            logger.debug(`[WechatMcpTool] Params type: ${typeof params}`);
+            logger.debug(`[WechatMcpTool] Params keys: ${Object.keys(params || {})}`);
+            // 不记录完整的参数内容,可能包含敏感信息
+            // logger.debug(`[WechatMcpTool] Params:`, JSON.stringify(params, null, 2));
+
             const result = await tool.handler(params, this.apiClient);
-            console.log(`[WechatMcpTool] Tool ${tool.name} result:`, result);
+            logger.debug(`[WechatMcpTool] Tool ${tool.name} executed successfully`);
             return result;
           } catch (error) {
-            console.error(`[WechatMcpTool] Error in tool ${tool.name}:`, error);
+            logger.error(`[WechatMcpTool] Error in tool ${tool.name}:`, error);
             return {
               content: [{
                 type: 'text' as const,
@@ -139,7 +140,7 @@ export class WechatMcpTool {
     }
 
     this.enabledTools = tools.map(tool => tool.name);
-    console.log(`[WechatMcpTool] Registered ${tools.length} tools to MCP server`);
+    logger.info(`[WechatMcpTool] Registered ${tools.length} tools to MCP server`);
   }
 
   /**

@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import { readFileSync } from 'fs';
 import { initMcpServerWithTransport } from './mcp-server/shared/init.js';
-import { logger } from './mcp-server/shared/logger.js';
+import { logger } from './utils/logger.js';
 import { McpServerOptions } from './mcp-server/shared/types.js';
 
 const program = new Command();
@@ -47,8 +47,9 @@ program
 
     try {
       logger.info(`Starting WeChat MCP Server in ${mode} mode...`);
-      logger.info(`App ID: ${appId}`);
-      
+      // 只记录 App ID 的前8个字符,避免泄露完整凭证
+      logger.info(`App ID: ${appId.substring(0, 8)}...`);
+
       await initMcpServerWithTransport(serverOptions);
     } catch (error) {
       logger.error(`Failed to start MCP server: ${error}`);
@@ -84,3 +85,14 @@ program
   });
 
 program.parse();
+
+// 全局错误处理
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});

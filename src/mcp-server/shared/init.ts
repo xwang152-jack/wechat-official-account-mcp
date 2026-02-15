@@ -3,7 +3,7 @@ import { WechatMcpTool } from '../../mcp-tool/index.js';
 import { AuthManager } from '../../auth/auth-manager.js';
 import { initStdioServer, initSSEServer } from '../transport/index.js';
 import { McpServerOptions } from './types';
-import { logger } from './logger.js';
+import { logger } from '../../utils/logger.js';
 import { readFileSync } from 'fs';
 
 export async function initWechatMcpServer(options: McpServerOptions) {

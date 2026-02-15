@@ -11,6 +11,7 @@ export class AuthManager {
   private storageManager: StorageManager;
   private config: WechatConfig | null = null;
   private tokenInfo: AccessTokenInfo | null = null;
+  private refreshPromise: Promise<AccessTokenInfo> | null = null; // Token 刷新锁
 
   constructor() {
     this.storageManager = new StorageManager();
@@ -57,15 +58,30 @@ export class AuthManager {
 
   /**
    * 获取有效的 Access Token
+   * 使用缓存和后台刷新策略优化性能
    */
   async getAccessToken(): Promise<AccessTokenInfo> {
-    // 检查是否有有效的 Token
-    if (this.tokenInfo && this.tokenInfo.expiresAt > Date.now() + 60000) { // 提前1分钟刷新
+    // 检查是否有有效的 Token (提前5分钟刷新)
+    const REFRESH_BEFORE_EXPIRY = 5 * 60 * 1000; // 5分钟
+
+    if (this.tokenInfo && this.tokenInfo.expiresAt > Date.now() + REFRESH_BEFORE_EXPIRY) {
       return this.tokenInfo;
     }
 
-    // 刷新 Token
-    return await this.refreshAccessToken();
+    // 如果正在刷新,等待刷新完成
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    // 启动后台刷新
+    this.refreshPromise = this.refreshAccessToken();
+
+    try {
+      const tokenInfo = await this.refreshPromise;
+      return tokenInfo;
+    } finally {
+      this.refreshPromise = null;
+    }
   }
 
   /**

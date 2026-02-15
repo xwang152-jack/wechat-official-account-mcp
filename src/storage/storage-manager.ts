@@ -127,6 +127,44 @@ export class StorageManager {
         publish_status INTEGER NOT NULL
       )
     `);
+
+    // 创建索引以提升查询性能
+    await this.createIndexes();
+  }
+
+  /**
+   * 创建数据库索引
+   */
+  private async createIndexes(): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const run = promisify(this.db.run.bind(this.db));
+
+    // access_tokens 表索引
+    await run(`CREATE INDEX IF NOT EXISTS idx_access_tokens_expires_at ON access_tokens(expires_at)`)
+      .catch(err => logger.warn('Failed to create index on access_tokens.expires_at:', err.message));
+    await run(`CREATE INDEX IF NOT EXISTS idx_access_tokens_created_at ON access_tokens(created_at)`)
+      .catch(err => logger.warn('Failed to create index on access_tokens.created_at:', err.message));
+
+    // media 表索引
+    await run(`CREATE INDEX IF NOT EXISTS idx_media_created_at ON media(created_at)`)
+      .catch(err => logger.warn('Failed to create index on media.created_at:', err.message));
+
+    // permanent_media 表索引
+    await run(`CREATE INDEX IF NOT EXISTS idx_permanent_media_created_at ON permanent_media(created_at)`)
+      .catch(err => logger.warn('Failed to create index on permanent_media.created_at:', err.message));
+
+    // drafts 表索引
+    await run(`CREATE INDEX IF NOT EXISTS idx_drafts_update_time ON drafts(update_time)`)
+      .catch(err => logger.warn('Failed to create index on drafts.update_time:', err.message));
+
+    // publishes 表索引
+    await run(`CREATE INDEX IF NOT EXISTS idx_publishes_publish_time ON publishes(publish_time)`)
+      .catch(err => logger.warn('Failed to create index on publishes.publish_time:', err.message));
+    await run(`CREATE INDEX IF NOT EXISTS idx_publishes_status ON publishes(publish_status)`)
+      .catch(err => logger.warn('Failed to create index on publishes.publish_status:', err.message));
+
+    logger.info('Database indexes created successfully');
   }
 
   private encryptValue(value: string | null | undefined): string | null {

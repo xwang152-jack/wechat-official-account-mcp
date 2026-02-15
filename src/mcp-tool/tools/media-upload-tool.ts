@@ -4,18 +4,19 @@ import { logger } from '../../utils/logger.js';
 import { StorageManager } from '../../storage/storage-manager.js';
 import { z } from 'zod';
 import FormData from 'form-data';
+import { mediaIdSchema, isValidFileSize, FILE_SIZE_LIMITS } from '../../utils/validation.js';
 
 // 媒体上传工具参数Schema (暂未使用，保留用于未来扩展)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const mediaUploadToolSchema = z.object({
   action: z.enum(['upload', 'get', 'list']),
   type: z.enum(['image', 'voice', 'video', 'thumb']).optional(),
-  filePath: z.string().optional(),
-  fileData: z.string().optional(), // base64 编码的文件数据
-  fileName: z.string().optional(),
-  mediaId: z.string().optional(),
-  title: z.string().optional(), // 视频素材的标题
-  introduction: z.string().optional(), // 视频素材的描述
+  filePath: z.string().max(512, '文件路径过长').optional(),
+  fileData: z.string().max(10485760, '文件数据过大').optional(), // 10MB base64 限制
+  fileName: z.string().max(256, '文件名过长').optional(),
+  mediaId: mediaIdSchema.optional(),
+  title: z.string().max(64, '标题过长').optional(), // 视频素材的标题
+  introduction: z.string().max(512, '描述过长').optional(), // 视频素材的描述
 });
 
 /**
@@ -50,7 +51,15 @@ async function handleMediaUploadTool(args: unknown, apiClient: WechatApiClient):
           uploadData = await fs.readFile(filePath!);
           uploadFileName = fileName || filePath!.split('/').pop() || 'media';
         }
-        
+
+        // 验证文件大小
+        const fileSizeLimit = FILE_SIZE_LIMITS[type];
+        if (uploadData.length > fileSizeLimit) {
+          const maxSizeMB = (fileSizeLimit / (1024 * 1024)).toFixed(2);
+          const actualSizeMB = (uploadData.length / (1024 * 1024)).toFixed(2);
+          throw new Error(`文件大小超过限制。最大允许: ${maxSizeMB}MB, 实际大小: ${actualSizeMB}MB`);
+        }
+
         // 准备表单数据
         const formData = new FormData();
         formData.append('media', uploadData, uploadFileName);

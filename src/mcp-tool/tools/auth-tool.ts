@@ -1,14 +1,15 @@
 import { z } from 'zod';
 import { WechatToolDefinition, WechatToolContext, WechatToolResult, McpTool, WechatApiClient } from '../types.js';
 import { logger } from '../../utils/logger.js';
+import { appIdSchema, appSecretSchema } from '../../utils/validation.js';
 
 // 认证工具参数 Schema
 const authToolSchema = z.object({
   action: z.enum(['configure', 'get_token', 'refresh_token', 'get_config']),
-  appId: z.string().optional(),
-  appSecret: z.string().optional(),
-  token: z.string().optional(),
-  encodingAESKey: z.string().optional(),
+  appId: appIdSchema.optional(),
+  appSecret: appSecretSchema.optional(),
+  token: z.string().max(128, 'Token长度不能超过128个字符').optional(),
+  encodingAESKey: z.string().length(43, 'EncodingAESKey必须为43个字符').optional(),
 });
 
 /**
