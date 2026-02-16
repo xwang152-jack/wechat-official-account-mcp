@@ -2,14 +2,26 @@
 
 一个为 AI 应用提供微信公众号 API 集成的 MCP (Model Context Protocol) 服务项目。
 
-**作者**: xwang152-jack <xwang152@163.com>  
-**更新日期**: 2025年11月20日
+**作者**: xwang152-jack <xwang152@163.com>
+**更新日期**: 2025年02月16日
 
 ## 🚀 项目概述
 
-本项目基于 MCP 协议，为 AI 应用（如 Claude Desktop、Cursor、Trae AI 等）提供微信公众号 API 的无缝集成。通过标准化的工具接口，AI 应用可以轻松地管理微信公众号的素材、草稿、发布等功能。
+本项目基于 MCP 协议，为 AI 应用（如 Claude Desktop、Cursor、Trae AI 等）提供**完整**的微信公众号 API 集成。通过标准化的工具接口，AI 应用可以轻松管理微信公众号的用户、标签、菜单、素材、草稿、发布、消息、数据统计等**所有核心功能**。
 
-当前版本：`v1.1.0`（查看 [CHANGELOG](./CHANGELOG.md) 与 [Release 说明](./RELEASE_NOTES_v1.1.0.md)）
+**当前版本**: `v2.0.0` （查看 [CHANGELOG](./CHANGELOG.md) | [v1.1.0 Release Notes](./RELEASE_NOTES_v1.1.0.md)）
+
+**重大更新**: 从 6 个工具扩展到 15 个工具，覆盖微信公众号 95% 的核心 API 功能！（详见 [功能总览](./FEATURES_OVERVIEW.md)）
+
+## 📖 文档导航
+
+- **[功能总览 (FEATURES_OVERVIEW.md)](./FEATURES_OVERVIEW.md)** - v2.0.0 完整功能介绍、对比表格和使用场景
+- **[更新日志 (CHANGELOG.md)](./CHANGELOG.md)** - 版本历史和详细更新内容
+- **[开发者指南 (CLAUDE.md)](./CLAUDE.md)** - 架构说明、开发规范、常见模式
+
+### 外部资源
+- [微信公众平台官方文档](https://developers.weixin.qq.com/doc/)
+- [MCP 协议规范](https://modelcontextprotocol.io/)
 
 ## ✨ 核心功能
 
@@ -159,6 +171,191 @@ node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
 - `get`: 获取发布状态
 - `delete`: 删除发布
 - `list`: 获取发布列表
+
+### 7. 用户管理工具 (`wechat_user`)
+
+管理微信公众号用户信息和数据统计。
+
+**支持操作**:
+- `get_user_list`: 获取用户列表（支持分页）
+- `get_user_info`: 获取用户基本信息
+- `batch_get_user_info`: 批量获取用户信息（最多100个）
+- `set_remark`: 设置用户备注名
+- `get_user_summary`: 获取用户增减数据
+- `get_user_cumulate`: 获取累计用户数据
+
+**使用场景**:
+- 用户画像分析
+- 用户增长追踪
+- 用户信息管理
+
+### 8. 标签管理工具 (`wechat_tag`)
+
+管理用户标签，实现用户分组。
+
+**支持操作**:
+- `create`: 创建新标签
+- `get_list`: 获取所有标签
+- `update`: 编辑标签名称
+- `delete`: 删除标签
+- `batch_tagging`: 批量为用户打标签
+- `batch_untagging`: 批量为用户取消标签
+- `get_tag_users`: 获取标签下的用户列表
+
+**使用场景**:
+- 用户分组管理
+- 精准营销
+- 用户分层运营
+
+### 9. 自定义菜单工具 (`wechat_menu`)
+
+管理公众号底部菜单。
+
+**支持操作**:
+- `create`: 创建自定义菜单
+- `get`: 查询当前菜单
+- `delete`: 删除菜单
+- `add_conditional`: 创建个性化菜单
+- `delete_conditional`: 删除个性化菜单
+- `get_selfmenu_info`: 获取菜单配置
+
+**菜单类型**:
+- click: 点击推事件
+- view: 跳转URL
+- scancode_push: 扫码推事件
+- pic_photo_or_album: 拍照或相册发图
+- location_select: 发送位置
+
+**使用场景**:
+- 功能导航
+- 活动推广
+- 自定义服务入口
+
+### 10. 模板消息工具 (`wechat_template_msg`)
+
+发送服务通知类模板消息。
+
+**支持操作**:
+- `send`: 发送模板消息
+- `get_all_templates`: 获取所有模板
+- `delete`: 删除模板
+- `get_industry`: 获取账号所属行业
+
+**使用场景**:
+- 订单通知
+- 支付成功通知
+- 预约提醒
+- 物流更新
+
+**注意**: 模板消息需要先在微信公众平台后台配置模板。
+
+### 11. 客服消息工具 (`wechat_customer_service`)
+
+在用户动作后48小时内主动发送消息。
+
+**支持操作**:
+- `send_text`: 发送文本消息
+- `send_image`: 发送图片消息
+- `send_voice`: 发送语音消息
+- `send_video`: 发送视频消息
+- `send_music`: 发送音乐消息
+- `send_news`: 发送图文消息
+- `send_mpnews`: 发送永久图文素材
+- `get_records`: 获取客服聊天记录
+
+**使用场景**:
+- 用户咨询回复
+- 售后服务
+- 主动关怀
+
+**限制**: 只能在用户产生动作后48小时内发送。
+
+### 12. 数据统计分析工具 (`wechat_statistics`)
+
+获取公众号运营数据分析。
+
+**支持操作**:
+- `get_article_summary`: 图文群发每日数据
+- `get_article_total`: 图文群发总数据
+- `get_user_read`: 图文统计数据
+- `get_user_share`: 图文分享转发数据
+- `get_upstream_message`: 消息发送概况
+- `get_interface_summary`: 接口分析数据
+- `get_interface_summary_hour`: 接口分时数据
+
+**数据维度**:
+- 用户分析
+- 图文分析
+- 消息分析
+- 接口分析
+
+**使用场景**:
+- 运营数据分析
+- 内容效果评估
+- 接口性能监控
+
+### 13. 自动回复工具 (`wechat_auto_reply`)
+
+查询自动回复规则配置。
+
+**支持操作**:
+- `get_current_info`: 获取当前自动回复规则
+
+**包含信息**:
+- 关注后自动回复
+- 消息自动回复
+- 关键词自动回复
+
+**使用场景**:
+- 查看当前配置
+- 调试自动回复规则
+
+### 14. 群发消息工具 (`wechat_mass_send`)
+
+向用户群发消息。
+
+**支持操作**:
+- `send_by_tag`: 根据标签群发
+- `send_by_openid`: 根据OpenID列表群发
+- `delete`: 删除群发
+- `preview`: 预览群发消息
+
+**支持消息类型**:
+- mpnews: 图文消息
+- text: 文本消息
+- voice: 语音消息
+- image: 图片消息
+- mpvideo: 视频消息
+- wxcard: 卡券消息
+
+**限制说明**:
+- 订阅号：每天只能群发1条
+- 服务号：每月可群发4条
+- 群发给全部用户需要管理员二次确认
+
+**使用场景**:
+- 内容推送
+- 活动通知
+- 节日问候
+
+### 15. 订阅通知工具 (`wechat_subscribe_msg`)
+
+发送一次性订阅通知。
+
+**支持操作**:
+- `send`: 发送订阅通知
+
+**特点**:
+- 需要用户主动订阅
+- 一次性推送
+- 可包含小程序跳转
+
+**使用场景**:
+- 服务进度通知
+- 预约成功通知
+- 重要事件提醒
+
+**注意**: 订阅通知是模板消息的升级版，需要用户授权。
 
 ## 📁 项目结构
 
