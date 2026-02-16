@@ -9,12 +9,22 @@ import { McpServerOptions } from './mcp-server/shared/types.js';
 const program = new Command();
 
 function getVersion(): string {
-  try {
-    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
-    return pkg.version || '1.0.0';
-  } catch {
-    return '1.0.0';
+  const candidates = [
+    '../../package.json',
+    '../package.json',
+    '../../../package.json',
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const pkg = JSON.parse(readFileSync(new URL(candidate, import.meta.url), 'utf-8'));
+      return pkg.version || '1.0.0';
+    } catch {
+      continue;
+    }
   }
+
+  return '1.0.0';
 }
 
 program

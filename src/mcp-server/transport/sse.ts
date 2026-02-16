@@ -18,7 +18,8 @@ export const initSSEServer: InitTransportServerFunction = async (
   app.use(express.json());
 
   // 错误处理中间件
-  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    void _next;
     logger.error('SSE server error:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error' });

@@ -10,8 +10,8 @@ mcpTools.forEach((tool, index) => {
 });
 
 console.log('\n=== 验证结果 ===');
-if (mcpTools.length === 6) {
-  console.log('✅ 成功！所有6个工具都已正确注册为MCP工具');
+if (mcpTools.length === 15) {
+  console.log('✅ 成功！所有15个工具都已正确注册为MCP工具');
 } else {
-  console.log(`❌ 失败！期望6个工具，实际注册了${mcpTools.length}个工具`);
+  console.log(`❌ 失败！期望15个工具，实际注册了${mcpTools.length}个工具`);
 }

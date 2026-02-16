@@ -41,7 +41,7 @@
     "prepublishOnly": "npm run build:prod",
     "lint": "eslint .",
     "check": "tsc --noEmit",
-    "test": "jest",
+    "test": "npm run build:prod && node test-tools.js",
     "clean": "rm -rf dist",
     "pack:test": "./scripts/pack-test.sh",
     "pack:dry": "npm pack --dry-run",

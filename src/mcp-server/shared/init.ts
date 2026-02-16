@@ -16,12 +16,22 @@ export async function initWechatMcpServer(options: McpServerOptions) {
 
   // 获取版本号
   const getVersion = () => {
-    try {
-      const packageJson = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf-8'));
-      return packageJson.version || '1.0.0';
-    } catch {
-      return '1.0.0';
+    const candidates = [
+      '../../../../package.json',
+      '../../../package.json',
+      '../../package.json',
+    ];
+
+    for (const candidate of candidates) {
+      try {
+        const packageJson = JSON.parse(readFileSync(new URL(candidate, import.meta.url), 'utf-8'));
+        return packageJson.version || '1.0.0';
+      } catch {
+        continue;
+      }
     }
+
+    return '1.0.0';
   };
 
   // 创建MCP服务器

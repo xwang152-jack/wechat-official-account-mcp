@@ -4,7 +4,7 @@ import { logger } from '../../utils/logger.js';
 import { StorageManager } from '../../storage/storage-manager.js';
 import { z } from 'zod';
 import FormData from 'form-data';
-import { mediaIdSchema, isValidFileSize, FILE_SIZE_LIMITS } from '../../utils/validation.js';
+import { mediaIdSchema, FILE_SIZE_LIMITS } from '../../utils/validation.js';
 
 // 媒体上传工具参数Schema (暂未使用，保留用于未来扩展)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -81,7 +81,7 @@ async function handleMediaUploadTool(args: unknown, apiClient: WechatApiClient):
         // 保存到本地存储（确保已初始化数据库）
         const storageManager = new StorageManager();
         await storageManager.initialize();
-        const saveResult = await storageManager.saveMedia({
+        await storageManager.saveMedia({
           mediaId: result.media_id,
           type: result.type as 'image' | 'voice' | 'video' | 'thumb',
           createdAt: result.created_at * 1000,
