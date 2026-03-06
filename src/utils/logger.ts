@@ -4,6 +4,7 @@ export enum LogLevel {
   INFO = 2,
   WARN = 3,
   ERROR = 4,
+  SILENT = 5,  // 完全静默模式
 }
 
 /**
@@ -56,7 +57,17 @@ function sanitizeValue(value: unknown): unknown {
 }
 
 class Logger {
-  private level: LogLevel = LogLevel.INFO;
+  private level: LogLevel;
+
+  constructor() {
+    // 支持通过环境变量设置日志级别
+    const envLevel = process.env.LOG_LEVEL?.toUpperCase();
+    if (envLevel && envLevel in LogLevel) {
+      this.level = LogLevel[envLevel as keyof typeof LogLevel];
+    } else {
+      this.level = LogLevel.INFO;
+    }
+  }
 
   setLevel(level: LogLevel) {
     this.level = level;
@@ -70,7 +81,8 @@ class Logger {
       // 脱敏所有参数
       const sanitizedArgs = args.map(arg => sanitizeValue(arg));
 
-      console.log(`[${timestamp}] [${levelName}] ${message}`, ...sanitizedArgs);
+      // 输出到 stderr 而不是 stdout，避免干扰 MCP stdio 协议
+      console.error(`[${timestamp}] [${levelName}] ${message}`, ...sanitizedArgs);
     }
   }
 

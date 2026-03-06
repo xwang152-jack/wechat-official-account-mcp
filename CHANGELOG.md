@@ -1,5 +1,49 @@
 # Changelog
 
+## v2.0.1 (2026-03-06)
+
+### 修复 🐛
+
+- **修复 stdio 模式兼容性问题**: 将日志输出从 `stdout` 改为 `stderr`，解决 MCP stdio 协议通信被日志污染的问题
+  - 影响：在 Claude Desktop、nanobot、Cursor 等使用 stdio 模式的客户端中无法正常连接
+  - 原因：`console.log` 输出到 stdout，干扰了 JSON-RPC 消息解析
+  - 解决：改用 `console.error` 输出日志到 stderr
+
+### 新增 ✨
+
+- **环境变量支持日志级别控制**: 新增 `LOG_LEVEL` 环境变量
+  - 支持值: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `SILENT`
+  - 示例: `LOG_LEVEL=SILENT` 可完全禁用日志输出
+
+- **新增 `SILENT` 日志级别**: 用于完全静默模式，适合生产环境
+
+### 配置示例
+
+```json
+{
+  "mcpServers": {
+    "wechat-official-account": {
+      "command": "npx",
+      "args": [
+        "wechat-official-account-mcp",
+        "mcp",
+        "-a", "your_app_id",
+        "-s", "your_app_secret"
+      ],
+      "env": {
+        "LOG_LEVEL": "ERROR"
+      }
+    }
+  }
+}
+```
+
+### 贡献者
+
+- [@windnemo](https://github.com/windnemo) - stdio 模式修复
+
+---
+
 ## v2.0.0 (2025-02-16)
 
 ### 重大更新 🎉
