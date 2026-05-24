@@ -4,6 +4,7 @@ export enum LogLevel {
   INFO = 2,
   WARN = 3,
   ERROR = 4,
+  SILENT = 5,  // 完全静默模式
 }
 
 /**
@@ -56,7 +57,17 @@ function sanitizeValue(value: unknown): unknown {
 }
 
 class Logger {
-  private level: LogLevel = LogLevel.INFO;
+  private level: LogLevel;
+
+  constructor() {
+    // 支持通过环境变量设置日志级别
+    const envLevel = process.env.LOG_LEVEL?.toUpperCase();
+    if (envLevel && envLevel in LogLevel) {
+      this.level = LogLevel[envLevel as keyof typeof LogLevel];
+    } else {
+      this.level = LogLevel.INFO;
+    }
+  }
 
   setLevel(level: LogLevel) {
     this.level = level;
