@@ -4,6 +4,8 @@ import { AuthManager } from '../auth/auth-manager.js';
 import { logger } from '../utils/logger.js';
 import { wechatTools, mcpTools } from './tools/index.js';
 import { WechatToolResult, WechatToolArgs, McpTool } from './types.js';
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import type { ServerRequest, ServerNotification, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 /**
  * 微信公众号 MCP 工具管理器
@@ -115,17 +117,16 @@ export class WechatMcpTool {
           description: tool.description,
           inputSchema: tool.inputSchema
         },
-        async (params: unknown) => {
+        async (params: Record<string, unknown>, _extra: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<CallToolResult> => {
+          void _extra;
           try {
             logger.debug(`[WechatMcpTool] Calling tool: ${tool.name}`);
             logger.debug(`[WechatMcpTool] Params type: ${typeof params}`);
             logger.debug(`[WechatMcpTool] Params keys: ${Object.keys(params || {})}`);
-            // 不记录完整的参数内容,可能包含敏感信息
-            // logger.debug(`[WechatMcpTool] Params:`, JSON.stringify(params, null, 2));
 
             const result = await tool.handler(params, this.apiClient);
             logger.debug(`[WechatMcpTool] Tool ${tool.name} executed successfully`);
-            return result;
+            return result as unknown as CallToolResult;
           } catch (error) {
             logger.error(`[WechatMcpTool] Error in tool ${tool.name}:`, error);
             return {

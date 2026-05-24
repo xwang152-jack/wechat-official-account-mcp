@@ -15,27 +15,30 @@ export const initStdioServer: InitTransportServerFunction = async (
 
   try {
     const transport = new StdioServerTransport();
-    const mcpServer = await getNewServer(options);
+    const { mcpServer, authManager } = await getNewServer(options);
 
     logger.info(
       `[StdioServerTransport] Connecting to WeChat MCP Server, appId: ${appId.substring(0, 8)}...`,
     );
 
     await mcpServer.connect(transport);
+
+    // 优雅关闭处理
+    const shutdown = async (signal: string) => {
+      logger.info(`[StdioServerTransport] Received ${signal}, shutting down gracefully...`);
+      try {
+        await authManager.dispose();
+        process.exit(0);
+      } catch (error) {
+        logger.error('Error during shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
   } catch (error) {
     logger.error('Failed to initialize stdio server:', error);
     process.exit(1);
   }
 };
-
-// 捕获未处理的异常
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception in stdio server:', error);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, _promise) => {
-  void _promise;
-  logger.error('Unhandled rejection in stdio server:', reason);
-  process.exit(1);
-});

@@ -47,7 +47,7 @@ function sanitizeValue(value: unknown): unknown {
         key.toLowerCase().includes(field.toLowerCase())
       );
 
-      sanitized[key] = isSensitive ? sanitizeValue(val) : sanitizeValue(val);
+      sanitized[key] = isSensitive ? sanitizeValue(val) : val;
     }
     return sanitized;
   }

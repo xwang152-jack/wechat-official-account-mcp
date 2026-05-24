@@ -20,7 +20,7 @@ export class StorageManager {
   private secretKey: string | undefined;
 
   constructor() {
-    this.dbPath = path.join(__dirname, '../../data/wechat-mcp.db');
+    this.dbPath = process.env.DB_PATH || path.join(__dirname, '../../data/wechat-mcp.db');
     this.secretKey = process.env.WECHAT_MCP_SECRET_KEY;
   }
 
@@ -58,7 +58,7 @@ export class StorageManager {
   private async createTables(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
 
     // 配置表
     await run(`
@@ -138,7 +138,7 @@ export class StorageManager {
   private async createIndexes(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
 
     // access_tokens 表索引
     await run(`CREATE INDEX IF NOT EXISTS idx_access_tokens_expires_at ON access_tokens(expires_at)`)
@@ -183,7 +183,8 @@ export class StorageManager {
       const bytes = CryptoJS.AES.decrypt(cipher, this.secretKey);
       const text = bytes.toString(CryptoJS.enc.Utf8);
       return text || null;
-    } catch {
+    } catch (error) {
+      logger.error('Decryption failed:', error);
       return null;
     }
   }
@@ -194,11 +195,11 @@ export class StorageManager {
   async saveConfig(config: WechatConfig): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
     const now = Date.now();
 
     await run(
-      `INSERT OR REPLACE INTO config (id, app_id, app_secret, token, encoding_aes_key, created_at, updated_at) 
+      `INSERT OR REPLACE INTO config (id, app_id, app_secret, token, encoding_aes_key, created_at, updated_at)
        VALUES (1, ?, ?, ?, ?, ?, ?)`,
       [
         config.appId,
@@ -217,7 +218,7 @@ export class StorageManager {
   async getConfig(): Promise<WechatConfig | null> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const get = promisify(this.db.get.bind(this.db));
+    const get = promisify(this.db.get.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<unknown>;
     const row = await get('SELECT * FROM config WHERE id = 1') as {
       app_id: string;
       app_secret: string;
@@ -227,11 +228,20 @@ export class StorageManager {
 
     if (!row) return null;
 
+    const appSecret = this.decryptValue(row.app_secret);
+    const token = this.decryptValue(row.token);
+    const encodingAESKey = this.decryptValue(row.encoding_aes_key);
+
+    if (!appSecret) {
+      logger.error('Failed to decrypt appSecret, configuration may be corrupted');
+      return null;
+    }
+
     return {
       appId: row.app_id,
-      appSecret: this.decryptValue(row.app_secret) || row.app_secret,
-      token: this.decryptValue(row.token) || row.token,
-      encodingAESKey: this.decryptValue(row.encoding_aes_key) || row.encoding_aes_key,
+      appSecret,
+      token: token || undefined,
+      encodingAESKey: encodingAESKey || undefined,
     };
   }
 
@@ -241,7 +251,7 @@ export class StorageManager {
   async clearConfig(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
     await run('DELETE FROM config WHERE id = 1');
   }
 
@@ -251,7 +261,7 @@ export class StorageManager {
   async saveAccessToken(tokenInfo: AccessTokenInfo): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
     await run('DELETE FROM access_tokens');
     await run(
       'INSERT INTO access_tokens (access_token, expires_in, expires_at, created_at) VALUES (?, ?, ?, ?)',
@@ -265,7 +275,7 @@ export class StorageManager {
   async getAccessToken(): Promise<AccessTokenInfo | null> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const get = promisify(this.db.get.bind(this.db));
+    const get = promisify(this.db.get.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<unknown>;
     const row = await get('SELECT * FROM access_tokens ORDER BY created_at DESC LIMIT 1') as {
       access_token: string;
       expires_in: number;
@@ -274,8 +284,13 @@ export class StorageManager {
 
     if (!row) return null;
 
+    const accessToken = this.decryptValue(row.access_token);
+    if (!accessToken) {
+      logger.error('Failed to decrypt access token');
+      return null;
+    }
     return {
-      accessToken: this.decryptValue(row.access_token) || row.access_token,
+      accessToken,
       expiresIn: row.expires_in,
       expiresAt: row.expires_at,
     };
@@ -287,7 +302,7 @@ export class StorageManager {
   async clearAccessToken(): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
     await run('DELETE FROM access_tokens');
   }
 
@@ -297,7 +312,7 @@ export class StorageManager {
   async saveMedia(media: MediaInfo): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const run = promisify(this.db.run.bind(this.db));
+    const run = promisify(this.db.run.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<void>;
     await run(
       'INSERT OR REPLACE INTO media (media_id, type, created_at, url) VALUES (?, ?, ?, ?)',
       [media.mediaId, media.type, media.createdAt, media.url || null]
@@ -310,7 +325,7 @@ export class StorageManager {
   async getMedia(mediaId: string): Promise<MediaInfo | null> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const get = promisify(this.db.get.bind(this.db));
+    const get = promisify(this.db.get.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<unknown>;
     const row = await get('SELECT * FROM media WHERE media_id = ?', [mediaId]) as {
       media_id: string;
       type: string;
@@ -334,7 +349,7 @@ export class StorageManager {
   async listMedia(type?: string): Promise<MediaInfo[]> {
     if (!this.db) throw new Error('Database not initialized');
 
-    const all = promisify(this.db.all.bind(this.db));
+    const all = promisify(this.db.all.bind(this.db)) as (sql: string, params?: unknown[]) => Promise<unknown[]>;
     const query = type 
       ? 'SELECT * FROM media WHERE type = ? ORDER BY created_at DESC'
       : 'SELECT * FROM media ORDER BY created_at DESC';

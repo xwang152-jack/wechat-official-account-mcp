@@ -143,4 +143,18 @@ export class AuthManager {
     await this.storageManager.clearAccessToken();
     logger.info('Auth cleared');
   }
+
+  /**
+   * 获取存储管理器实例
+   */
+  getStorageManager(): StorageManager {
+    return this.storageManager;
+  }
+
+  /**
+   * 释放资源
+   */
+  async dispose(): Promise<void> {
+    await this.storageManager.close();
+  }
 }

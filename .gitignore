@@ -25,3 +25,9 @@ dist-ssr
 *.sln
 *.sw?
 .vite
+
+# Database and environment
+data/
+.env
+.env.*
+!.env.example

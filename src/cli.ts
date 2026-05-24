@@ -1,31 +1,12 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { readFileSync } from 'fs';
 import { initMcpServerWithTransport } from './mcp-server/shared/init.js';
 import { logger } from './utils/logger.js';
 import { McpServerOptions } from './mcp-server/shared/types.js';
+import { getVersion } from './utils/version.js';
 
 const program = new Command();
-
-function getVersion(): string {
-  const candidates = [
-    '../../package.json',
-    '../package.json',
-    '../../../package.json',
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      const pkg = JSON.parse(readFileSync(new URL(candidate, import.meta.url), 'utf-8'));
-      return pkg.version || '1.0.0';
-    } catch {
-      continue;
-    }
-  }
-
-  return '1.0.0';
-}
 
 program
   .name('wechat-mcp')
@@ -48,15 +29,19 @@ program
       process.exit(1);
     }
 
+    const validModes = ['stdio', 'sse'] as const;
+    const validatedMode = validModes.includes(mode as any) ? mode as 'stdio' | 'sse' : 'stdio';
+    const validatedPort = port ? String(parseInt(port, 10) || 3000) : '3000';
+
     const serverOptions: McpServerOptions = {
       appId,
       appSecret,
-      mode: mode as 'stdio' | 'sse',
-      port: port
+      mode: validatedMode,
+      port: validatedPort,
     };
 
     try {
-      logger.info(`Starting WeChat MCP Server in ${mode} mode...`);
+      logger.info(`Starting WeChat MCP Server in ${validatedMode} mode...`);
       // 只记录 App ID 的前8个字符,避免泄露完整凭证
       logger.info(`App ID: ${appId.substring(0, 8)}...`);
 
