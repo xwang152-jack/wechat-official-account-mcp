@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { AuthManager } from '../../auth/auth-manager.js';
 
 export interface McpServerOptions {
   appId: string;
@@ -11,7 +12,12 @@ export interface McpServerOptions {
   config?: string;
 }
 
-export type GetNewServerFunction = (options: McpServerOptions) => Promise<McpServer>;
+export interface NewServerResult {
+  mcpServer: McpServer;
+  authManager: AuthManager;
+}
+
+export type GetNewServerFunction = (options: McpServerOptions) => Promise<NewServerResult>;
 
 export type InitTransportServerFunction = (
   getNewServer: GetNewServerFunction,

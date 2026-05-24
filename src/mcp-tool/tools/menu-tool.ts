@@ -1,9 +1,20 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
-import { logger } from '../../utils/logger.js';
 
 // 验证 Schema
 const menuIdSchema = z.number().int().positive('菜单ID必须为正整数');
+
+// 菜单按钮接口
+interface MenuButton {
+  name: string;
+  type?: string;
+  key?: string;
+  url?: string;
+  mediaId?: string;
+  sub_button?: MenuButton[];
+  appid?: string;
+  pagepath?: string;
+}
 
 export const menuMcpTool: McpTool = {
   name: 'wechat_menu',
@@ -17,102 +28,97 @@ export const menuMcpTool: McpTool = {
       'delete_conditional',
       'get_selfmenu_info'
     ]),
-    menuData: z.any().optional(), // 复杂的菜单结构
+    menuData: z.record(z.unknown()).optional(),
     menuId: menuIdSchema.optional(),
   },
   handler: async (params: unknown, apiClient: WechatApiClient): Promise<WechatToolResult> => {
-    try {
-      const validated = parseMenuParams(params);
+    const validated = parseMenuParams(params);
 
-      switch (validated.action) {
-        case 'create': {
-          if (!validated.menuData) {
-            throw new Error('create 操作需要 menuData 参数');
-          }
-
-          await apiClient.createMenu(validated.menuData);
-          return {
-            content: [{
-              type: 'text',
-              text: `自定义菜单创建成功\n注意：菜单可能需要24小时生效，或重新关注公众号立即生效`
-            }]
-          };
+    switch (validated.action) {
+      case 'create': {
+        if (!validated.menuData) {
+          throw new Error('create 操作需要 menuData 参数');
         }
 
-        case 'get': {
-          const result = await apiClient.getMenu();
-          const menuText = formatMenu(result.menu?.button || []);
-
-          return {
-            content: [{
-              type: 'text',
-              text: `自定义菜单配置:\n${menuText}`
-            }]
-          };
-        }
-
-        case 'delete': {
-          await apiClient.deleteMenu();
-          return {
-            content: [{
-              type: 'text',
-              text: `自定义菜单删除成功`
-            }]
-          };
-        }
-
-        case 'add_conditional': {
-          if (!validated.menuData) {
-            throw new Error('add_conditional 操作需要 menuData 参数（需包含 button 和 matchrule）');
-          }
-
-          const result = await apiClient.addConditionalMenu(validated.menuData);
-          return {
-            content: [{
-              type: 'text',
-              text: `个性化菜单创建成功\n- 菜单ID: ${result.menuid}\n注意：个性化菜单需要一定时间生效`
-            }]
-          };
-        }
-
-        case 'delete_conditional': {
-          if (!validated.menuId) {
-            throw new Error('delete_conditional 操作需要 menuId 参数');
-          }
-
-          await apiClient.deleteConditionalMenu(validated.menuId);
-          return {
-            content: [{
-              type: 'text',
-              text: `个性化菜单删除成功\n- 菜单ID: ${validated.menuId}`
-            }]
-          };
-        }
-
-        case 'get_selfmenu_info': {
-          const result = await apiClient.getSelfMenuInfo();
-          const menuText = formatMenu(result.selfmenu_info?.button || []);
-
-          return {
-            content: [{
-              type: 'text',
-              text: `自定义菜单配置:\n${menuText}`
-            }]
-          };
-        }
-
-        default:
-          throw new Error(`未知的操作: ${validated.action}`);
+        await apiClient.createMenu(validated.menuData as Parameters<typeof apiClient.createMenu>[0]);
+        return {
+          content: [{
+            type: 'text',
+            text: `自定义菜单创建成功\n注意：菜单可能需要24小时生效，或重新关注公众号立即生效`
+          }]
+        };
       }
-    } catch (error) {
-      logger.error('Menu tool error:', error);
-      throw error;
+
+      case 'get': {
+        const result = await apiClient.getMenu();
+        const menuText = formatMenu(result.menu?.button || []);
+
+        return {
+          content: [{
+            type: 'text',
+            text: `自定义菜单配置:\n${menuText}`
+          }]
+        };
+      }
+
+      case 'delete': {
+        await apiClient.deleteMenu();
+        return {
+          content: [{
+            type: 'text',
+            text: `自定义菜单删除成功`
+          }]
+        };
+      }
+
+      case 'add_conditional': {
+        if (!validated.menuData) {
+          throw new Error('add_conditional 操作需要 menuData 参数（需包含 button 和 matchrule）');
+        }
+
+        const result = await apiClient.addConditionalMenu(validated.menuData as Parameters<typeof apiClient.addConditionalMenu>[0]);
+        return {
+          content: [{
+            type: 'text',
+            text: `个性化菜单创建成功\n- 菜单ID: ${result.menuid}\n注意：个性化菜单需要一定时间生效`
+          }]
+        };
+      }
+
+      case 'delete_conditional': {
+        if (!validated.menuId) {
+          throw new Error('delete_conditional 操作需要 menuId 参数');
+        }
+
+        await apiClient.deleteConditionalMenu(validated.menuId);
+        return {
+          content: [{
+            type: 'text',
+            text: `个性化菜单删除成功\n- 菜单ID: ${validated.menuId}`
+          }]
+        };
+      }
+
+      case 'get_selfmenu_info': {
+        const result = await apiClient.getSelfMenuInfo();
+        const menuText = formatMenu(result.selfmenu_info?.button || []);
+
+        return {
+          content: [{
+            type: 'text',
+            text: `自定义菜单配置:\n${menuText}`
+          }]
+        };
+      }
+
+      default:
+        throw new Error(`未知的操作: ${validated.action}`);
     }
   }
 };
 
 // 格式化菜单显示
-function formatMenu(buttons: Array<any>, indent: number = 0): string {
+function formatMenu(buttons: MenuButton[], indent: number = 0): string {
   const prefix = '  '.repeat(indent);
   return buttons.map((btn, index) => {
     let text = `${prefix}${index + 1}. ${btn.name}`;
@@ -130,6 +136,17 @@ function formatMenu(buttons: Array<any>, indent: number = 0): string {
 }
 
 // 参数解析辅助函数
-function parseMenuParams(params: unknown): any {
-  return params as any;
+function parseMenuParams(params: unknown) {
+  return z.object({
+    action: z.enum([
+      'create',
+      'get',
+      'delete',
+      'add_conditional',
+      'delete_conditional',
+      'get_selfmenu_info'
+    ]),
+    menuData: z.record(z.unknown()).optional(),
+    menuId: z.number().int().positive('菜单ID必须为正整数').optional(),
+  }).parse(params);
 }

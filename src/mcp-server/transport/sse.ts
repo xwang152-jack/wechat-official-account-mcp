@@ -1,6 +1,7 @@
 import express from 'express';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { InitTransportServerFunction } from '../shared/index.js';
+import { AuthManager } from '../../auth/auth-manager.js';
 import { logger } from '../../utils/logger.js';
 
 export const initSSEServer: InitTransportServerFunction = async (
@@ -17,6 +18,20 @@ export const initSSEServer: InitTransportServerFunction = async (
   const app = express();
   app.use(express.json());
 
+  // CORS 中间件
+  app.use((req, res, next) => {
+    const origin = process.env.CORS_ORIGIN || 'localhost';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    next();
+  });
+
   // 错误处理中间件
   app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
     void _next;
@@ -26,26 +41,29 @@ export const initSSEServer: InitTransportServerFunction = async (
     }
   });
 
+  // 保存 authManager 引用用于优雅关闭
+  let authManager: AuthManager | null = null;
+
   app.get('/sse', async (req, res) => {
     try {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
-        'Access-Control-Allow-Headers': 'Cache-Control'
       });
 
       // Create SSE transport
       const transport = new SSEServerTransport("/messages", res);
-      const mcpServer = await getNewServer(options);
+      const result = await getNewServer(options);
+      const mcpServer = result.mcpServer;
+      authManager = result.authManager;
 
       await mcpServer.connect(transport);
 
       req.on('close', async () => {
         try {
-          logger.info('SSE connection closed, cleaning up...');
-          // 这里可以添加清理逻辑
+          logger.info('SSE connection connection closed, cleaning up...');
+          await mcpServer.close();
         } catch (error) {
           logger.error('Error during SSE cleanup:', error);
         }
@@ -81,7 +99,9 @@ export const initSSEServer: InitTransportServerFunction = async (
     logger.info(`[SSEServerTransport] Received ${signal}, shutting down gracefully...`);
 
     try {
-      // 停止接受新连接
+      if (authManager) {
+        await authManager.dispose();
+      }
       server.close(() => {
         logger.info('HTTP server closed');
         process.exit(0);
@@ -100,15 +120,4 @@ export const initSSEServer: InitTransportServerFunction = async (
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-  // 捕获未处理的异常
-  process.on('uncaughtException', (error) => {
-    logger.error('Uncaught exception:', error);
-    shutdown('uncaughtException');
-  });
-
-  process.on('unhandledRejection', (reason, promise) => {
-    logger.error('Unhandled rejection at:', promise, 'reason:', reason);
-    shutdown('unhandledRejection');
-  });
 };
