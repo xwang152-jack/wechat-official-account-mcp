@@ -70,7 +70,9 @@ class Logger {
       // 脱敏所有参数
       const sanitizedArgs = args.map(arg => sanitizeValue(arg));
 
-      console.log(`[${timestamp}] [${levelName}] ${message}`, ...sanitizedArgs);
+      // MCP stdio 传输要求 stdout 只承载 JSON-RPC 协议消息。
+      // 普通日志必须写入 stderr，否则严格客户端会把日志当协议内容解析并导致工具发现失败。
+      console.error(`[${timestamp}] [${levelName}] ${message}`, ...sanitizedArgs);
     }
   }
 
