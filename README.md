@@ -3,15 +3,15 @@
 一个为 AI 应用提供微信公众号 API 集成的 MCP (Model Context Protocol) 服务项目。
 
 **作者**: xwang152-jack <xwang152@163.com>
-**更新日期**: 2025年02月16日
+**更新日期**: 2026年05月24日
 
 ## 🚀 项目概述
 
 本项目基于 MCP 协议，为 AI 应用（如 Claude Desktop、Cursor、Trae AI 等）提供**完整**的微信公众号 API 集成。通过标准化的工具接口，AI 应用可以轻松管理微信公众号的用户、标签、菜单、素材、草稿、发布、消息、数据统计等**所有核心功能**。
 
-**当前版本**: `v2.0.0` （查看 [CHANGELOG](./CHANGELOG.md) | [v1.1.0 Release Notes](./RELEASE_NOTES_v1.1.0.md)）
+**当前版本**: `v2.1.0` （查看 [CHANGELOG](./CHANGELOG.md) | [v1.1.0 Release Notes](./RELEASE_NOTES_v1.1.0.md)）
 
-**重大更新**: 从 6 个工具扩展到 15 个工具，覆盖微信公众号 95% 的核心 API 功能！（详见 [功能总览](./FEATURES_OVERVIEW.md)）
+**v2.1.0 重大更新**: 全面代码质量审计与安全加固 — 修复 6 个 CRITICAL、10 个 HIGH 级别问题，启用 TypeScript strict 模式，强化输入验证和路径安全。
 
 ## 📖 文档导航
 
@@ -371,25 +371,19 @@ src/
 │       ├── stdio.ts     # stdio 传输
 │       └── sse.ts       # SSE 传输
 ├── mcp-tool/            # MCP 工具实现
-│   ├── index.ts         # 工具管理器
+│   ├── index.ts         # 工具管理器（统一错误处理）
 │   ├── types.ts         # 类型定义
-│   └── tools/           # 具体工具实现
-│       ├── index.ts
-│       ├── auth-tool.ts
-│       ├── media-upload-tool.ts
-│       ├── upload-img-tool.ts
-│       ├── permanent-media-tool.ts
-│       ├── draft-tool.ts
-│       └── publish-tool.ts
+│   └── tools/           # 15 个工具实现（均含 Zod 验证）
 ├── auth/                # 认证管理
-│   └── auth-manager.ts
+│   └── auth-manager.ts  # Token 管理 + dispose()
 ├── wechat/              # 微信 API 客户端
 │   └── api-client.ts
 ├── storage/             # 数据存储
-│   └── storage-manager.ts
+│   └── storage-manager.ts  # SQLite + AES 加密
 └── utils/               # 工具函数
-    ├── logger.ts
-    └── db-init.ts
+    ├── logger.ts        # 日志（含敏感字段脱敏）
+    ├── validation.ts    # Zod schema + 路径校验 + HTML 清理
+    └── version.ts       # 共享版本号获取
 ```
 
 ## 🔗 在 AI 应用中使用
@@ -546,11 +540,16 @@ DB_PATH=./data/wechat-mcp.db
 
 ## 🔒 安全说明
 
-- 加密存储：设置 `WECHAT_MCP_SECRET_KEY` 后，`app_secret/token/encoding_aes_key/access_token` 以加密形式持久化（带 `enc:` 前缀标识）
-- 日志脱敏：错误日志仅记录状态码或消息，避免泄露响应体与敏感信息
-- 跨域白名单：生产环境务必设置 `CORS_ORIGIN` 为精确域名列表，避免 `*`
-- 参数校验：工具参数使用 Zod 校验，降低不当输入风险
-- 切勿提交密钥：不要将 AppSecret、Token 等放入代码仓库或构建产物
+- **TypeScript strict 模式**: 全项目启用严格类型检查，消除隐式 any 和空值风险
+- **输入验证**: 所有 15 个 MCP 工具均通过 Zod schema 执行 `.parse()` 运行时验证，无任何绕过
+- **路径安全**: 文件上传路径经过 `validateFilePath()` 校验，防止路径遍历攻击
+- **凭证保护**: Access Token 在返回值中脱敏显示（前8后4），AppSecret 仅显示 `***`
+- **加密存储**: 设置 `WECHAT_MCP_SECRET_KEY` 后，`app_secret/token/encoding_aes_key/access_token` 以 AES 加密形式持久化（带 `enc:` 前缀标识）
+- **日志脱敏**: 敏感字段自动识别并脱敏，非敏感信息保留原值，确保日志可读性
+- **CORS 安全**: SSE 模式默认仅允许 `localhost`，生产环境务必设置 `CORS_ORIGIN` 为精确域名白名单
+- **资源管理**: 数据库连接通过 `dispose()` 正确关闭，SSE 连接断开时清理 MCP 服务器实例
+- **解密安全**: 加密数据解密失败时不再静默回退到密文，而是记录错误并返回 null
+- 切勿提交密钥：`.gitignore` 已包含 `data/` 和 `.env` 规则，防止敏感数据意外提交
 
 ## 🤝 贡献指南
 

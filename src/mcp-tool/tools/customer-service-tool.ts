@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
-import { logger } from '../../utils/logger.js';
 
 // 验证 Schema
 const openIdSchema = z.string().min(1, 'OpenID不能为空');
@@ -28,17 +27,16 @@ export const customerServiceMcpTool: McpTool = {
     description: z.string().optional(),
     musicUrl: z.string().url().optional(),
     hqMusicUrl: z.string().url().optional(),
-    articles: z.array(z.any()).optional(), // 图文消息
+    articles: z.array(z.record(z.unknown())).optional(),
     startTime: z.number().int().positive().optional(),
     endTime: z.number().int().positive().optional(),
     msgId: z.number().int().optional(),
     number: z.number().int().positive().optional(),
   },
   handler: async (params: unknown, apiClient: WechatApiClient): Promise<WechatToolResult> => {
-    try {
-      const validated = parseCustomerServiceParams(params);
+    const validated = parseCustomerServiceParams(params);
 
-      switch (validated.action) {
+    switch (validated.action) {
         case 'send_text': {
           if (!validated.toUser) {
             throw new Error('send_text 操作需要 toUser 参数');
@@ -236,17 +234,37 @@ export const customerServiceMcpTool: McpTool = {
           };
         }
 
-        default:
-          throw new Error(`未知的操作: ${validated.action}`);
-      }
-    } catch (error) {
-      logger.error('Customer service tool error:', error);
-      throw error;
+      default:
+        throw new Error(`未知的操作: ${validated.action}`);
     }
   }
 };
 
 // 参数解析辅助函数
-function parseCustomerServiceParams(params: unknown): any {
-  return params as any;
+function parseCustomerServiceParams(params: unknown) {
+  return z.object({
+    action: z.enum([
+      'send_text',
+      'send_image',
+      'send_voice',
+      'send_video',
+      'send_music',
+      'send_news',
+      'send_mpnews',
+      'get_records'
+    ]),
+    toUser: z.string().min(1, 'OpenID不能为空').optional(),
+    content: z.string().optional(),
+    mediaId: z.string().min(1, 'MediaID不能为空').optional(),
+    thumbMediaId: z.string().optional(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+    musicUrl: z.string().url().optional(),
+    hqMusicUrl: z.string().url().optional(),
+    articles: z.array(z.record(z.unknown())).optional(),
+    startTime: z.number().int().positive().optional(),
+    endTime: z.number().int().positive().optional(),
+    msgId: z.number().int().optional(),
+    number: z.number().int().positive().optional(),
+  }).parse(params);
 }

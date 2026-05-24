@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
-import { logger } from '../../utils/logger.js';
 
 // 验证 Schema
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式不正确，应为YYYY-MM-DD');
@@ -22,11 +21,10 @@ export const statisticsMcpTool: McpTool = {
     endDate: dateSchema.optional(),
   },
   handler: async (params: unknown, apiClient: WechatApiClient): Promise<WechatToolResult> => {
-    try {
-      const validated = parseStatisticsParams(params);
+    const validated = parseStatisticsParams(params);
 
-      // 大多数统计接口都需要日期参数
-      if (validated.action !== 'get_interface_summary' && validated.action !== 'get_interface_summary_hour') {
+    // 大多数统计接口都需要日期参数
+    if (validated.action !== 'get_interface_summary' && validated.action !== 'get_interface_summary_hour') {
         if (!validated.beginDate || !validated.endDate) {
           throw new Error(`${validated.action} 操作需要 beginDate 和 endDate 参数`);
         }
@@ -34,7 +32,7 @@ export const statisticsMcpTool: McpTool = {
 
       switch (validated.action) {
         case 'get_article_summary': {
-          const result = await apiClient.getArticleSummary(validated.beginDate, validated.endDate);
+          const result = await apiClient.getArticleSummary(validated.beginDate!, validated.endDate!);
           const summary = result.list.map(item =>
             `${item.refDate}:\n` +
             `  - 图文页阅读人数: ${item.intPageReadUser}\n` +
@@ -56,7 +54,7 @@ export const statisticsMcpTool: McpTool = {
         }
 
         case 'get_article_total': {
-          const result = await apiClient.getArticleTotal(validated.beginDate, validated.endDate);
+          const result = await apiClient.getArticleTotal(validated.beginDate!, validated.endDate!);
           const total = result.list.map(item =>
             `${item.refDate}:\n` +
             `  - 来源: ${item.userSource}\n` +
@@ -75,7 +73,7 @@ export const statisticsMcpTool: McpTool = {
         }
 
         case 'get_user_read': {
-          const result = await apiClient.getUserRead(validated.beginDate, validated.endDate);
+          const result = await apiClient.getUserRead(validated.beginDate!, validated.endDate!);
           const read = result.list.map(item =>
             `${item.refDate}:\n` +
             `  - 图文页阅读人数: ${item.intPageReadUser}\n` +
@@ -95,7 +93,7 @@ export const statisticsMcpTool: McpTool = {
         }
 
         case 'get_user_share': {
-          const result = await apiClient.getUserShare(validated.beginDate, validated.endDate);
+          const result = await apiClient.getUserShare(validated.beginDate!, validated.endDate!);
           const share = result.list.map(item =>
             `${item.refDate}:\n` +
             `  - 分享人数: ${item.shareUser}\n` +
@@ -111,7 +109,7 @@ export const statisticsMcpTool: McpTool = {
         }
 
         case 'get_upstream_message': {
-          const result = await apiClient.getUpstreamMessage(validated.beginDate, validated.endDate);
+          const result = await apiClient.getUpstreamMessage(validated.beginDate!, validated.endDate!);
           const message = result.list.map(item =>
             `${item.refDate}:\n` +
             `  - 消息类型: ${item.msgType}\n` +
@@ -171,17 +169,25 @@ export const statisticsMcpTool: McpTool = {
           };
         }
 
-        default:
-          throw new Error(`未知的操作: ${validated.action}`);
-      }
-    } catch (error) {
-      logger.error('Statistics tool error:', error);
-      throw error;
+      default:
+        throw new Error(`未知的操作: ${validated.action}`);
     }
   }
 };
 
 // 参数解析辅助函数
-function parseStatisticsParams(params: unknown): any {
-  return params as any;
+function parseStatisticsParams(params: unknown) {
+  return z.object({
+    action: z.enum([
+      'get_article_summary',
+      'get_article_total',
+      'get_user_read',
+      'get_user_share',
+      'get_upstream_message',
+      'get_interface_summary',
+      'get_interface_summary_hour'
+    ]),
+    beginDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式不正确，应为YYYY-MM-DD').optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式不正确，应为YYYY-MM-DD').optional(),
+  }).parse(params);
 }

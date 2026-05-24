@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import path from 'path';
 
 /**
  * 文件类型白名单
@@ -57,6 +58,27 @@ export function sanitizeHtmlContent(content: string): string {
 }
 
 /**
+ * 校验文件路径安全性，防止路径遍历攻击
+ */
+export function validateFilePath(filePath: string): string {
+  const resolved = path.resolve(filePath);
+
+  // 拒绝包含 .. 的路径（在 resolve 之后检查，因为 resolve 会消除 ..）
+  const normalized = path.normalize(filePath);
+  if (normalized.includes('..')) {
+    throw new Error('文件路径不允许包含父目录引用 (..)');
+  }
+
+  // 拒绝绝对路径指向系统关键目录
+  const systemDirs = ['/etc', '/proc', '/sys', '/dev', '/boot', '/root', '/private/etc'];
+  if (systemDirs.some(dir => resolved.startsWith(dir))) {
+    throw new Error('不允许访问系统目录');
+  }
+
+  return resolved;
+}
+
+/**
  * 验证 URL 格式
  */
 export function isValidUrl(url: string): boolean {
@@ -70,7 +92,7 @@ export function isValidUrl(url: string): boolean {
  * 验证文件类型
  */
 export function isValidMediaType(mimeType: string): boolean {
-  return ALLOWED_MEDIA_TYPES.includes(mimeType as any);
+  return (ALLOWED_MEDIA_TYPES as readonly string[]).includes(mimeType);
 }
 
 /**

@@ -1,48 +1,44 @@
 # Changelog
 
-## v2.0.1 (2026-03-06)
+## v2.1.0 (2026-05-24)
 
-### 修复 🐛
+### 代码质量与安全加固
 
-- **修复 stdio 模式兼容性问题**: 将日志输出从 `stdout` 改为 `stderr`，解决 MCP stdio 协议通信被日志污染的问题
-  - 影响：在 Claude Desktop、nanobot、Cursor 等使用 stdio 模式的客户端中无法正常连接
-  - 原因：`console.log` 输出到 stdout，干扰了 JSON-RPC 消息解析
-  - 解决：改用 `console.error` 输出日志到 stderr
+基于三维度代码审查（TypeScript 质量、安全性、架构设计），系统性修复 6 个 CRITICAL、10 个 HIGH、12+ 个 MEDIUM 级别问题。
 
-### 新增 ✨
+#### 安全修复 (CRITICAL)
 
-- **环境变量支持日志级别控制**: 新增 `LOG_LEVEL` 环境变量
-  - 支持值: `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `SILENT`
-  - 示例: `LOG_LEVEL=SILENT` 可完全禁用日志输出
+- **路径遍历修复**: 新增 `validateFilePath()` 函数，所有文件读取路径经过 `path.resolve()` + 父目录拒绝校验
+- **输入验证强化**: 所有 15 个 MCP 工具 handler 中 `args as any` 替换为 `schema.parse(args)`，Zod schema 运行时验证 100% 覆盖
+- **凭证脱敏**: Access Token 返回值脱敏为前8后4位，AppSecret 在 `get_config` 中仅显示 `***`
+- **CORS 安全**: SSE 模式默认值从 `*` 改为 `localhost`，添加全局 CORS 中间件覆盖所有路由
+- **解密安全**: `decryptValue` 失败时记录错误日志，不再静默回退到加密密文
+- **TypeScript strict 模式**: `tsconfig.json` 启用 `"strict": true`
 
-- **新增 `SILENT` 日志级别**: 用于完全静默模式，适合生产环境
+#### 资源管理修复 (HIGH)
 
-### 配置示例
+- **共享 StorageManager**: 移除每次操作新建实例的反模式，通过 `AuthManager.getStorageManager()` 获取共享实例
+- **优雅关闭**: 新增 `AuthManager.dispose()` 方法，在 SIGINT/SIGTERM 信号中正确关闭 SQLite 连接
+- **SSE 连接清理**: `req.on('close')` 中调用 `mcpServer.close()` 释放资源
 
-```json
-{
-  "mcpServers": {
-    "wechat-official-account": {
-      "command": "npx",
-      "args": [
-        "wechat-official-account-mcp",
-        "mcp",
-        "-a", "your_app_id",
-        "-s", "your_app_secret"
-      ],
-      "env": {
-        "LOG_LEVEL": "ERROR"
-      }
-    }
-  }
-}
-```
+#### 架构改进 (MEDIUM)
 
-### 贡献者
+- **统一错误处理**: 所有工具 handler 异常冒泡到 `WechatMcpTool.registerTools()` 统一 catch，消除 3 种不一致的错误处理策略
+- **消除重复代码**: auth-tool 合并 `handleAuthTool`/`handleAuthMcpTool` 为 `handleAuthCore`（减少约 80 行），publish-tool `statusMap` 提取为模块级常量
+- **共享 getVersion**: 提取 `src/utils/version.ts`，消除 cli.ts 和 init.ts 的重复实现
+- **日志脱敏修复**: `isSensitive ? sanitizeValue(val) : sanitizeValue(val)` 两个相同分支修正为 `isSensitive ? sanitizeValue(val) : val`
+- **同步改异步**: `fs.readFileSync` 替换为 `await fs.promises.readFile`
+- **CLI 参数验证**: mode 和 port 参数添加运行时校验
+- **环境变量**: `DB_PATH` 环境变量实际生效，`.gitignore` 添加 `data/` 和 `.env`
+- **全局错误处理器**: 消除 cli.ts/stdio.ts/sse.ts 三处重复注册
+- **前端代码排除**: tsconfig.json 精确 include 后端目录，前端文件不再参与编译
 
-- [@windnemo](https://github.com/windnemo) - stdio 模式修复
+#### 类型安全
 
----
+- `isValidMediaType` 中 `as any` 改为 `(ALLOWED_MEDIA_TYPES as readonly string[]).includes()`
+- mass-send-tool/menu-tool/subscribe-msg-tool 定义具体接口替代 `any` 类型
+- MCP handler 签名匹配 `RequestHandlerExtra<ServerRequest, ServerNotification>`
+- storage-manager promisify 调用添加显式类型声明
 
 ## v2.0.0 (2025-02-16)
 

@@ -19,7 +19,7 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
-    "strict": false,
+    "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": false,
@@ -36,7 +36,14 @@
     ]
   },
   "include": [
-    "src",
+    "src/cli.ts",
+    "src/index.ts",
+    "src/auth",
+    "src/mcp-server",
+    "src/mcp-tool",
+    "src/storage",
+    "src/utils",
+    "src/wechat",
     "api"
   ]
 }
