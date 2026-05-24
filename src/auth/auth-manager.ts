@@ -127,6 +127,16 @@ export class AuthManager {
   }
 
   /**
+   * 获取 AppId
+   */
+  getAppId(): string {
+    if (!this.config?.appId) {
+      throw new Error('Wechat config not found. Please configure first.');
+    }
+    return this.config.appId;
+  }
+
+  /**
    * 检查配置是否完整
    */
   isConfigured(): boolean {

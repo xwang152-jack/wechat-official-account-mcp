@@ -14,6 +14,12 @@ import { statisticsMcpTool } from './statistics-tool.js';
 import { autoReplyMcpTool } from './auto-reply-tool.js';
 import { massSendMcpTool } from './mass-send-tool.js';
 import { subscribeMsgMcpTool } from './subscribe-msg-tool.js';
+import { qrcodeMcpTool } from './qrcode-tool.js';
+import { shortUrlMcpTool } from './short-url-tool.js';
+import { commentMcpTool } from './comment-tool.js';
+import { blacklistMcpTool } from './blacklist-tool.js';
+import { kfAccountMcpTool } from './kf-account-tool.js';
+import { accountMcpTool } from './account-tool.js';
 
 /**
  * 所有微信公众号 MCP 工具
@@ -56,6 +62,14 @@ export const mcpTools: McpTool[] = [
   // 高级功能
   autoReplyMcpTool,
   massSendMcpTool,
+
+  // 新增工具
+  qrcodeMcpTool,
+  shortUrlMcpTool,
+  commentMcpTool,
+  blacklistMcpTool,
+  kfAccountMcpTool,
+  accountMcpTool,
 ];
 
 export {
@@ -74,4 +88,10 @@ export {
   autoReplyMcpTool,
   massSendMcpTool,
   subscribeMsgMcpTool,
+  qrcodeMcpTool,
+  shortUrlMcpTool,
+  commentMcpTool,
+  blacklistMcpTool,
+  kfAccountMcpTool,
+  accountMcpTool,
 };

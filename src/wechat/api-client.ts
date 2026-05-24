@@ -1235,4 +1235,473 @@ export class WechatApiClient {
       throw error;
     }
   }
+
+  // ==================== 二维码管理 API ====================
+
+  /**
+   * 创建二维码 Ticket
+   */
+  async createQrCode(data: {
+    expireSeconds?: number;
+    actionName: 'QR_SCENE' | 'QR_STR_SCENE' | 'QR_LIMIT_SCENE' | 'QR_LIMIT_STR_SCENE';
+    sceneId?: number;
+    sceneStr?: string;
+  }): Promise<{ ticket: string; expireSeconds?: number; url: string }> {
+    try {
+      const scene: Record<string, unknown> = {};
+      if (data.sceneId !== undefined) scene.scene_id = data.sceneId;
+      if (data.sceneStr !== undefined) scene.scene_str = data.sceneStr;
+
+      const requestData: Record<string, unknown> = {
+        action_name: data.actionName,
+        action_info: { scene },
+      };
+      if (data.expireSeconds !== undefined) requestData.expire_seconds = data.expireSeconds;
+
+      const response = await this.httpClient.post('/cgi-bin/qrcode/create', requestData);
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Create QR code failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return {
+        ticket: response.data.ticket,
+        expireSeconds: response.data.expire_seconds,
+        url: response.data.url,
+      };
+    } catch (error) {
+      logger.error('Failed to create QR code:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 通过 Ticket 换取二维码图片 URL
+   */
+  getQrCodeUrl(ticket: string): string {
+    return `https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket=${encodeURIComponent(ticket)}`;
+  }
+
+  // ==================== 短链接 API ====================
+
+  /**
+   * 长链接转短链接
+   */
+  async shortUrl(longUrl: string): Promise<{ shortUrl: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/shorten/gen', {
+        action: 'long2short',
+        long_url: longUrl,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Short URL failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return { shortUrl: response.data.short_url };
+    } catch (error) {
+      logger.error('Failed to create short URL:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  // ==================== 评论管理 API ====================
+
+  /**
+   * 打开已群发文章评论
+   */
+  async openComment(msgDataId: number, index: number): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/open', {
+        msg_data_id: msgDataId,
+        index,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Open comment failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to open comment:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 关闭已群发文章评论
+   */
+  async closeComment(msgDataId: number, index: number): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/close', {
+        msg_data_id: msgDataId,
+        index,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Close comment failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to close comment:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 查看指定文章的评论列表
+   */
+  async getCommentList(msgDataId: number, index: number, begin: number, count: number, type: number): Promise<{
+    total: number;
+    comment: Array<{
+      userCommentId: number;
+      createTime: number;
+      content: string;
+      commentType: number;
+      openid: string;
+      reply?: {
+        content: string;
+        createTime: number;
+      };
+    }>;
+  }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/list', {
+        msg_data_id: msgDataId,
+        index,
+        begin,
+        count,
+        type,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get comment list failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get comment list:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 标记为精选评论
+   */
+  async markElectComment(msgDataId: number, index: number, userCommentId: number): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/markelect', {
+        msg_data_id: msgDataId,
+        index,
+        user_comment_id: userCommentId,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Mark elect comment failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to mark elect comment:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 取消精选评论
+   */
+  async unmarkElectComment(msgDataId: number, index: number, userCommentId: number): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/unmarkelect', {
+        msg_data_id: msgDataId,
+        index,
+        user_comment_id: userCommentId,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Unmark elect comment failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to unmark elect comment:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 删除评论
+   */
+  async deleteComment(msgDataId: number, index: number, userCommentId: number): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/delete', {
+        msg_data_id: msgDataId,
+        index,
+        user_comment_id: userCommentId,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Delete comment failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to delete comment:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 回复评论
+   */
+  async replyComment(msgDataId: number, index: number, userCommentId: number, content: string): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/reply/add', {
+        msg_data_id: msgDataId,
+        index,
+        user_comment_id: userCommentId,
+        content,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Reply comment failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to reply comment:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 删除评论回复
+   */
+  async deleteCommentReply(msgDataId: number, index: number, userCommentId: number, replyId: number): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/comment/reply/delete', {
+        msg_data_id: msgDataId,
+        index,
+        user_comment_id: userCommentId,
+        reply_id: replyId,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Delete comment reply failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to delete comment reply:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  // ==================== 黑名单管理 API ====================
+
+  /**
+   * 获取黑名单列表
+   */
+  async getBlackList(beginOpenId?: string): Promise<{
+    total: number;
+    count: number;
+    data: { openid: string[] };
+    next_openid: string;
+  }> {
+    try {
+      const requestData: Record<string, unknown> = {};
+      if (beginOpenId) requestData.begin_openid = beginOpenId;
+
+      const response = await this.httpClient.post('/cgi-bin/tags/members/getblacklist', requestData);
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get blacklist failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get blacklist:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 拉黑用户
+   */
+  async batchBlackList(openIdList: string[]): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/tags/members/batchblacklist', {
+        openid_list: openIdList,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Batch blacklist failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to batch blacklist:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 取消拉黑用户
+   */
+  async batchUnBlackList(openIdList: string[]): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/tags/members/batchunblacklist', {
+        openid_list: openIdList,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Batch unblacklist failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to batch unblacklist:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  // ==================== 客服账号管理 API ====================
+
+  /**
+   * 添加客服账号
+   */
+  async addKfAccount(kfAccount: string, nickname: string, password: string): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/customservice/kfaccount/add', {
+        kf_account: kfAccount,
+        nickname,
+        password,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Add kf account failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to add kf account:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 修改客服账号
+   */
+  async updateKfAccount(kfAccount: string, nickname: string, password: string): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/customservice/kfaccount/update', {
+        kf_account: kfAccount,
+        nickname,
+        password,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Update kf account failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to update kf account:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 删除客服账号
+   */
+  async deleteKfAccount(kfAccount: string): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/customservice/kfaccount/del', {
+        kf_account: kfAccount,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Delete kf account failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to delete kf account:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 获取客服列表
+   */
+  async getKfList(): Promise<{
+    kf_list: Array<{
+      kf_account: string;
+      kf_nick: string;
+      kf_id: string;
+      kf_headimgurl: string;
+    }>;
+  }> {
+    try {
+      const response = await this.httpClient.get('/cgi-bin/customservice/getkflist');
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get kf list failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get kf list:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  // ==================== 账号管理 API ====================
+
+  /**
+   * 重置 API 调用次数
+   */
+  async clearQuota(): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/clear_quota', {
+        appid: this.authManager.getAppId(),
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Clear quota failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to clear quota:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 查询 API 调用次数配额
+   */
+  async getApiQuota(cgiPath: string): Promise<{
+    quota: {
+      daily_limit: number;
+      used: number;
+      remain: number;
+    };
+  }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/openapi/quota/get', {
+        cgi_path: cgiPath,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get API quota failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get API quota:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
 }
