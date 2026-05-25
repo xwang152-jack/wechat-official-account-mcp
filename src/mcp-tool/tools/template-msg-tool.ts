@@ -7,16 +7,21 @@ const openIdSchema = z.string().min(1, 'OpenID不能为空');
 
 export const templateMsgMcpTool: McpTool = {
   name: 'wechat_template_msg',
-  description: '微信公众号模板消息 - 发送模板消息、获取模板列表、删除模板、获取行业信息',
+  description: '微信公众号模板消息 - 发送模板消息、管理模板、设置行业、获取行业信息',
   inputSchema: {
     action: z.enum([
       'send',
+      'set_industry',
+      'add_template',
       'get_all_templates',
       'delete',
       'get_industry'
     ]),
     toUser: openIdSchema.optional(),
     templateId: templateIdSchema.optional(),
+    industryId1: z.string().min(1, '主行业ID不能为空').optional(),
+    industryId2: z.string().min(1, '副行业ID不能为空').optional(),
+    templateShortId: z.string().min(1, '模板库编号不能为空').optional(),
     url: z.string().url('URL格式不正确').optional(),
     topColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, '颜色格式不正确，应为#RRGGBB').optional(),
     data: z.record(z.object({
@@ -54,6 +59,45 @@ export const templateMsgMcpTool: McpTool = {
                   `- 接收者: ${validated.toUser}\n` +
                   `- 模板ID: ${validated.templateId}\n` +
                   `- 消息ID: ${result.msgid}`
+          }]
+        };
+      }
+
+      case 'set_industry': {
+        if (!validated.industryId1 || !validated.industryId2) {
+          throw new Error('set_industry 操作需要 industryId1 和 industryId2 参数');
+        }
+
+        await apiClient.post('/cgi-bin/template/api_set_industry', {
+          industry_id1: validated.industryId1,
+          industry_id2: validated.industryId2,
+        });
+
+        return {
+          content: [{
+            type: 'text',
+            text: `模板消息所属行业设置成功\n` +
+                  `- 主行业ID: ${validated.industryId1}\n` +
+                  `- 副行业ID: ${validated.industryId2}`
+          }]
+        };
+      }
+
+      case 'add_template': {
+        if (!validated.templateShortId) {
+          throw new Error('add_template 操作需要 templateShortId 参数');
+        }
+
+        const result = await apiClient.post('/cgi-bin/template/api_add_template', {
+          template_id_short: validated.templateShortId,
+        }) as { template_id: string };
+
+        return {
+          content: [{
+            type: 'text',
+            text: `模板添加成功\n` +
+                  `- 模板库编号: ${validated.templateShortId}\n` +
+                  `- 模板ID: ${result.template_id}`
           }]
         };
       }
@@ -112,12 +156,17 @@ function parseTemplateMsgParams(params: unknown) {
   return z.object({
     action: z.enum([
       'send',
+      'set_industry',
+      'add_template',
       'get_all_templates',
       'delete',
       'get_industry'
     ]),
     toUser: z.string().min(1, 'OpenID不能为空').optional(),
     templateId: z.string().min(1, '模板ID不能为空').optional(),
+    industryId1: z.string().min(1, '主行业ID不能为空').optional(),
+    industryId2: z.string().min(1, '副行业ID不能为空').optional(),
+    templateShortId: z.string().min(1, '模板库编号不能为空').optional(),
     url: z.string().url('URL格式不正确').optional(),
     topColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/, '颜色格式不正确，应为#RRGGBB').optional(),
     data: z.record(z.object({

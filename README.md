@@ -146,6 +146,8 @@ node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
 
 **支持操作**:
 - `add`: 上传永久素材（图片、语音、视频、缩略图）
+- `add`: 上传永久图文素材（`type: news`）
+- `update`: 更新永久图文素材中的指定文章
 - `get`: 获取永久素材
 - `delete`: 删除永久素材
 - `list`: 获取素材列表
@@ -157,6 +159,7 @@ node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
 
 **支持操作**:
 - `add`: 新建草稿
+- `update`: 更新草稿中的指定文章
 - `get`: 获取草稿详情
 - `delete`: 删除草稿
 - `list`: 获取草稿列表
@@ -237,6 +240,8 @@ node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
 
 **支持操作**:
 - `send`: 发送模板消息
+- `set_industry`: 设置账号所属行业
+- `add_template`: 从模板库添加模板
 - `get_all_templates`: 获取所有模板
 - `delete`: 删除模板
 - `get_industry`: 获取账号所属行业

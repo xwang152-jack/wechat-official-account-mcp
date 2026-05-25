@@ -4,12 +4,27 @@ import { draftArticleSchema, mediaIdSchema } from '../../utils/validation.js';
 
 // 草稿工具参数 Schema
 const draftToolSchema = z.object({
-  action: z.enum(['add', 'get', 'delete', 'list', 'count']),
+  action: z.enum(['add', 'update', 'get', 'delete', 'list', 'count']),
   mediaId: mediaIdSchema.optional(),
+  index: z.number().int().min(0).optional(),
   articles: z.array(draftArticleSchema).optional(),
   offset: z.number().int().min(0).optional(),
   count: z.number().int().min(1).max(20).optional(),
 });
+
+function formatDraftArticle(article: any) {
+  return {
+    title: article.title,
+    author: article.author || '',
+    digest: article.digest || '',
+    content: article.content,
+    content_source_url: article.contentSourceUrl || '',
+    thumb_media_id: article.thumbMediaId,
+    show_cover_pic: article.showCoverPic || 0,
+    need_open_comment: article.needOpenComment || 0,
+    only_fans_can_comment: article.onlyFansCanComment || 0,
+  };
+}
 
 /**
  * 草稿工具核心处理逻辑
@@ -19,6 +34,7 @@ async function handleDraftOperations(
   action: string,
   params: {
     mediaId?: string;
+    index?: number;
     articles?: any[];
     offset?: number;
     count?: number;
@@ -34,23 +50,42 @@ async function handleDraftOperations(
       }
 
       const result = await apiClient.post('/cgi-bin/draft/add', {
-        articles: articles.map((article: any) => ({
-          title: article.title,
-          author: article.author || '',
-          digest: article.digest || '',
-          content: article.content,
-          content_source_url: article.contentSourceUrl || '',
-          thumb_media_id: article.thumbMediaId,
-          show_cover_pic: article.showCoverPic || 0,
-          need_open_comment: article.needOpenComment || 0,
-          only_fans_can_comment: article.onlyFansCanComment || 0,
-        }))
+        articles: articles.map((article: any) => formatDraftArticle(article))
       }) as any;
 
       return {
         content: [{
           type: 'text',
           text: `草稿创建成功！\n草稿ID: ${result.media_id}\n包含文章数: ${articles.length}`,
+        }],
+      };
+    }
+
+    case 'update': {
+      const { mediaId, index, articles } = params;
+
+      if (!mediaId) {
+        throw new Error('草稿ID不能为空');
+      }
+
+      if (index === undefined) {
+        throw new Error('更新草稿时必须提供文章索引 index');
+      }
+
+      if (!articles || articles.length !== 1) {
+        throw new Error('更新草稿时必须提供且仅提供一篇文章内容');
+      }
+
+      await apiClient.post('/cgi-bin/draft/update', {
+        media_id: mediaId,
+        index,
+        articles: formatDraftArticle(articles[0]),
+      }) as any;
+
+      return {
+        content: [{
+          type: 'text',
+          text: `草稿更新成功！\n草稿ID: ${mediaId}\n更新索引: ${index}`,
         }],
       };
     }
@@ -153,9 +188,9 @@ async function handleDraftOperations(
 async function handleDraftTool(context: WechatToolContext): Promise<WechatToolResult> {
   const { args, apiClient } = context;
   const validatedArgs = draftToolSchema.parse(args);
-  const { action, mediaId, articles, offset, count } = validatedArgs;
+  const { action, mediaId, index, articles, offset, count } = validatedArgs;
 
-  return handleDraftOperations(action, { mediaId, articles, offset, count }, apiClient);
+  return handleDraftOperations(action, { mediaId, index, articles, offset, count }, apiClient);
 }
 
 /**
@@ -163,9 +198,9 @@ async function handleDraftTool(context: WechatToolContext): Promise<WechatToolRe
  */
 async function handleDraftMcpTool(args: unknown, apiClient: WechatApiClient): Promise<WechatToolResult> {
   const validatedArgs = draftToolSchema.parse(args);
-  const { action, mediaId, articles, offset, count } = validatedArgs;
+  const { action, mediaId, index, articles, offset, count } = validatedArgs;
 
-  return handleDraftOperations(action, { mediaId, articles, offset, count }, apiClient);
+  return handleDraftOperations(action, { mediaId, index, articles, offset, count }, apiClient);
 }
 
 /**
@@ -179,12 +214,16 @@ export const draftTool: WechatToolDefinition = {
     properties: {
       action: {
         type: 'string',
-        enum: ['add', 'get', 'delete', 'list', 'count'],
+        enum: ['add', 'update', 'get', 'delete', 'list', 'count'],
         description: '操作类型',
       },
       mediaId: {
         type: 'string',
         description: '草稿 Media ID',
+      },
+      index: {
+        type: 'number',
+        description: '草稿文章索引（update 时必需）',
       },
     },
     required: ['action'],
@@ -199,8 +238,9 @@ export const draftMcpTool: McpTool = {
   name: 'wechat_draft',
   description: '管理微信公众号草稿',
   inputSchema: {
-    action: z.enum(['add', 'get', 'delete', 'list', 'count']).describe('操作类型：add(创建), get(获取), delete(删除), list(列表), count(统计)'),
-    mediaId: z.string().optional().describe('草稿 Media ID（获取、删除时必需）'),
+    action: z.enum(['add', 'update', 'get', 'delete', 'list', 'count']).describe('操作类型：add(创建), update(更新), get(获取), delete(删除), list(列表), count(统计)'),
+    mediaId: z.string().optional().describe('草稿 Media ID（get、update、delete 时必需）'),
+    index: z.number().int().min(0).optional().describe('草稿中的文章索引（update 时必需）'),
     articles: z.array(z.object({
       title: z.string().describe('文章标题'),
       author: z.string().optional().describe('作者'),
@@ -211,7 +251,7 @@ export const draftMcpTool: McpTool = {
       showCoverPic: z.number().optional().describe('是否显示封面图片'),
       needOpenComment: z.number().optional().describe('是否开启评论'),
       onlyFansCanComment: z.number().optional().describe('是否仅粉丝可评论'),
-    })).optional().describe('文章列表（创建时必需）'),
+    })).optional().describe('文章列表（add 时可传多篇，update 时必须且仅能传一篇）'),
     offset: z.number().optional().describe('偏移量（列表时使用）'),
     count: z.number().optional().describe('数量（列表时使用）'),
   },
