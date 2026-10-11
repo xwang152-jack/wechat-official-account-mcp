@@ -4,7 +4,8 @@ import { AuthManager } from '../../auth/auth-manager.js';
 export interface McpServerOptions {
   appId: string;
   appSecret: string;
-  mode?: 'stdio' | 'sse';
+  /** stdio（本地）/ http（远程，推荐）/ sse（已废弃，仅为兼容保留） */
+  mode?: 'stdio' | 'http' | 'sse';
   host?: string;
   port?: string;
   tools?: string[];

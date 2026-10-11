@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WechatMcpTool } from '../../mcp-tool/index.js';
 import { SERVER_INSTRUCTIONS } from '../../mcp-tool/public-tools.js';
 import { AuthManager } from '../../auth/auth-manager.js';
-import { initStdioServer, initSSEServer } from '../transport/index.js';
+import { initStdioServer, initSSEServer, initHttpServer } from '../transport/index.js';
 import { McpServerOptions } from './types';
 import { logger } from '../../utils/logger.js';
 import { getVersion } from '../../utils/version.js';
@@ -56,7 +56,14 @@ export async function initMcpServerWithTransport(options: McpServerOptions) {
     case 'stdio':
       await initStdioServer(getNewServer, options);
       break;
+    case 'http':
+      await initHttpServer(getNewServer, options);
+      break;
     case 'sse':
+      logger.warn(
+        'SSE transport is deprecated by the MCP spec and has no authentication. ' +
+        'Use --mode http instead.',
+      );
       await initSSEServer(getNewServer, options);
       break;
     default:

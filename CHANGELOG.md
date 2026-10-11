@@ -62,6 +62,32 @@
 - **`wechat_draft` 摘要上限收紧**：`digest` 由 256 字改为 120 字，对齐官方 2026-07-14 变更。
 - **`wechat_short_url` 返回字段变更**：由 `shortUrl` 改为 `shortKey`。注意短 key 不是可直接点击的短链接，需用 `fetch` 还原。
 
+### 新增：远程部署（Streamable HTTP 传输）
+
+新增 `--mode http`，采用 MCP 规范当前推荐的 **Streamable HTTP** 传输，取代已被规范废弃的 SSE。
+
+```bash
+MCP_HTTP_TOKEN=$(openssl rand -hex 32) \
+CORS_ORIGIN=https://your-client.example \
+npx wechat-mcp mcp -a <appId> -s <appSecret> -m http -p 3000
+```
+
+- 端点：`POST /mcp`（无状态，每请求独立 transport）、`GET /healthz`（免鉴权探活）
+- 鉴权：设置 `MCP_HTTP_TOKEN` 后所有 `/mcp` 请求需带 `Authorization: Bearer <token>`；未设置时启动即告警
+- CORS：`CORS_ORIGIN` 逗号分隔白名单，不再使用通配符
+- 无状态模式下 `GET`/`DELETE /mcp` 返回 405
+- `--mode sse` 保留但打出废弃告警（该传输无鉴权，不建议继续使用）
+- 新增 `scripts/verify-http-transport.mjs`：起真实服务校验鉴权边界（无 token / 错 token 均 401、正确 token 可握手），已并入 `npm run verify`
+
+#### 为什么是单租户自托管，而不是多租户托管
+
+多租户托管方案经评估后**未采用**，原因有二：
+
+1. **Claude 的 connector 鉴权不支持「用户粘贴静态密钥」**（`static_bearer` 明确列为 not supported）。而「用户自带微信 appId/appSecret」本质就是静态密钥，套不进 CIMD/DCR 的 OAuth 流程，只能走需要事先联系 Anthropic 报备的 `custom_connection`。
+2. **微信要求调用方 IP 在账号后台白名单**（否则报 `40164 invalid ip`）。托管服务须让每个用户把服务出口 IP 加进自己的公众号后台，接入摩擦大。
+
+自托管形态则没有这两个问题：部署者持有自己的凭据，把自己的服务器 IP 加白即可。
+
 ### 返回值结构化：全部工具改为 JSON
 
 101 个 action 的返回从「中文散文」改为**结构化 JSON**，Claude 现在可以可靠地解析字段、复用上一轮返回的 ID。

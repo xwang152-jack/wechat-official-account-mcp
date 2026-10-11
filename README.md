@@ -59,7 +59,7 @@ npx wechat-official-account-mcp mcp -a <your_app_id> -s <your_app_secret>
 npx wechat-official-account-mcp mcp -a wx1234567890abcdef -s your_app_secret_here
 ```
 
-> 提示：如使用 SSE 模式，请设置 `CORS_ORIGIN` 为允许访问的域名白名单。
+> 提示：以 `--mode http` 暴露到公网时，务必设置 `MCP_HTTP_TOKEN`（鉴权）与 `CORS_ORIGIN`（来源白名单）。
 
 ### 方式二：全局安装
 
@@ -92,8 +92,9 @@ WECHAT_APP_ID=<your_app_id> WECHAT_APP_SECRET=<your_app_secret> node dist/src/cl
 
 - `-a, --app-id <appId>`: 微信公众号 AppID（可选；也可用 `WECHAT_APP_ID`）
 - `-s, --app-secret <appSecret>`: 微信公众号 AppSecret（可选；也可用 `WECHAT_APP_SECRET`）
-- `-m, --mode <mode>`: 传输模式，支持 `stdio`（默认）和 `sse`
-- `-p, --port <port>`: SSE 模式下的端口号（默认 3000）
+- `-m, --mode <mode>`: 传输模式，支持 `stdio`（默认）、`http`（远程，推荐）、`sse`（已废弃）
+- `-p, --port <port>`: `http`/`sse` 模式下的端口号（默认 3000）
+- `--host <host>`: `http`/`sse` 模式下的绑定地址（默认 `0.0.0.0`）
 - `-h, --help`: 显示帮助信息
 
 环境变量（常用）：
@@ -195,7 +196,8 @@ src/
 │   │   └── types.ts     # 类型定义
 │   └── transport/       # 传输层实现
 │       ├── stdio.ts     # stdio 传输
-│       └── sse.ts       # SSE 传输
+│       ├── http.ts      # Streamable HTTP 传输（推荐）
+│       └── sse.ts       # SSE 传输（已废弃）
 ├── mcp-tool/            # MCP 工具实现
 │   ├── index.ts         # 工具管理器（统一错误处理）
 │   ├── types.ts         # 类型定义
@@ -214,6 +216,35 @@ src/
     ├── validation.ts    # Zod schema + 路径校验 + HTML 清理
     └── version.ts       # 共享版本号获取
 ```
+
+## 🌐 远程部署（Streamable HTTP）
+
+以 HTTP 模式启动，供远程 MCP 客户端接入：
+
+```bash
+MCP_HTTP_TOKEN=$(openssl rand -hex 32) \
+CORS_ORIGIN=https://your-client.example \
+npx wechat-mcp mcp -a <appId> -s <appSecret> -m http -p 3000
+```
+
+| 端点 | 说明 |
+| --- | --- |
+| `POST /mcp` | MCP 端点（无状态，每请求独立传输） |
+| `GET /healthz` | 探活，不鉴权 |
+
+| 环境变量 | 作用 |
+| --- | --- |
+| `MCP_HTTP_TOKEN` | 设置后所有 `/mcp` 请求需带 `Authorization: Bearer <token>`；**暴露公网前必须设置** |
+| `CORS_ORIGIN` | 逗号分隔的来源白名单，不使用通配符 |
+
+> ⚠️ **微信 IP 白名单**：公众号 API 要求调用方 IP 在账号后台白名单内，否则返回 `40164 invalid ip`。
+> 部署到服务器后，需把该服务器的出口 IP 加入「公众号后台 → 开发 → 基本配置 → IP 白名单」。
+
+### 关于多租户托管
+
+本项目**不提供**多租户托管形态，原因是 Claude 的 connector 鉴权不支持「用户粘贴静态密钥」（`static_bearer` 属 not supported），而「用户自带微信 appId/appSecret」正是这种形态，无法套用 CIMD/DCR 的 OAuth 流程。自托管单租户没有这个问题：凭据由部署者自己持有。
+
+---
 
 ## 🔗 在 AI 应用中使用
 
@@ -379,8 +410,9 @@ DB_PATH=./data/wechat-mcp.db
 - **凭证传递**: CLI 支持 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET` 环境变量，推荐用环境变量传入 AppSecret，避免敏感值出现在命令行参数中
 - **加密存储**: `app_secret/token/encoding_aes_key/access_token` 默认以 AES 加密形式持久化（带 `enc:` 前缀标识）；未设置 `WECHAT_MCP_SECRET_KEY` 时会自动生成本地密钥文件
 - **日志脱敏**: 敏感字段自动识别并脱敏，非敏感信息保留原值，确保日志可读性
-- **CORS 安全**: SSE 模式默认仅允许 `localhost`，生产环境务必设置 `CORS_ORIGIN` 为精确域名白名单
-- **资源管理**: 数据库连接通过 `dispose()` 正确关闭，SSE 连接断开时清理 MCP 服务器实例
+- **HTTP 鉴权**: `--mode http` 下设置 `MCP_HTTP_TOKEN` 后，所有 `/mcp` 请求必须带 `Authorization: Bearer`；未设置时启动即告警
+- **CORS 安全**: `CORS_ORIGIN` 为精确域名白名单，不使用通配符；未配置时不允许跨源
+- **资源管理**: 数据库连接通过 `dispose()` 正确关闭，请求/连接结束时清理 MCP 服务器实例
 - **解密安全**: 加密数据解密失败时不再静默回退到密文，而是记录错误并返回 null
 - 切勿提交密钥：`.gitignore` 已包含 `data/` 和 `.env` 规则，防止敏感数据意外提交
 

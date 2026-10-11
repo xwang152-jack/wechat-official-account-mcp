@@ -18,10 +18,11 @@ program
   .description('Start WeChat MCP server')
   .option('-a, --app-id <appId>', 'WeChat App ID')
   .option('-s, --app-secret <appSecret>', 'WeChat App Secret')
-  .option('-m, --mode <mode>', 'Transport mode (stdio|sse)', 'stdio')
-  .option('-p, --port <port>', 'Port for SSE mode', '3000')
+  .option('-m, --mode <mode>', 'Transport mode (stdio|http|sse)', 'stdio')
+  .option('-p, --port <port>', 'Port for http/sse mode', '3000')
+  .option('--host <host>', 'Bind address for http/sse mode', '0.0.0.0')
   .action(async (options) => {
-    const { mode, port } = options;
+    const { mode, port, host } = options;
     const appId = options.appId || process.env.WECHAT_APP_ID;
     const appSecret = options.appSecret || process.env.WECHAT_APP_SECRET;
 
@@ -31,8 +32,8 @@ program
       process.exit(1);
     }
 
-    const validModes = ['stdio', 'sse'] as const;
-    const validatedMode = validModes.includes(mode as any) ? mode as 'stdio' | 'sse' : 'stdio';
+    const validModes = ['stdio', 'http', 'sse'] as const;
+    const validatedMode = validModes.includes(mode as any) ? mode as 'stdio' | 'http' | 'sse' : 'stdio';
     const validatedPort = port ? String(parseInt(port, 10) || 3000) : '3000';
 
     const serverOptions: McpServerOptions = {
@@ -40,6 +41,7 @@ program
       appSecret,
       mode: validatedMode,
       port: validatedPort,
+      host: host || '0.0.0.0',
     };
 
     try {
@@ -74,18 +76,21 @@ program
     console.log('Options:');
     console.log('  -a, --app-id <appId>        WeChat App ID');
     console.log('  -s, --app-secret <appSecret> WeChat App Secret');
-    console.log('  -m, --mode <mode>           Transport mode (stdio|sse), default: stdio');
-    console.log('  -p, --port <port>           Port for SSE mode, default: 3000');
+    console.log('  -m, --mode <mode>           Transport mode (stdio|http|sse), default: stdio');
+    console.log('  -p, --port <port>           Port for http/sse mode, default: 3000');
+    console.log('  --host <host>               Bind address for http/sse mode, default: 0.0.0.0');
     console.log('');
     console.log('Environment:');
     console.log('  WECHAT_APP_ID               WeChat App ID');
     console.log('  WECHAT_APP_SECRET           WeChat App Secret');
     console.log('  WECHAT_MCP_SECRET_KEY       Storage encryption key');
+    console.log('  MCP_HTTP_TOKEN              Bearer token required by --mode http (set this before exposing publicly)');
+    console.log('  CORS_ORIGIN                 Comma-separated origin allowlist for --mode http');
     console.log('');
     console.log('Examples:');
     console.log('  WECHAT_APP_ID=wx1234567890 WECHAT_APP_SECRET=abcdef1234567890 npx wechat-mcp mcp');
     console.log('  npx wechat-mcp mcp -a wx1234567890 -s abcdef1234567890');
-    console.log('  npx wechat-mcp mcp -a wx1234567890 -s abcdef1234567890 -m sse -p 3001');
+    console.log('  MCP_HTTP_TOKEN=$(openssl rand -hex 32) npx wechat-mcp mcp -a wx... -s ... -m http -p 3001');
   });
 
 program.parse();
