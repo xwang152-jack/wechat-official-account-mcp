@@ -61,6 +61,23 @@ export interface WechatToolDefinition {
 export type McpToolHandler = (params: unknown, apiClient: WechatApiClient) => Promise<WechatToolResult>;
 
 /**
+ * MCP 工具注解
+ * 参照 Anthropic connector 审核标准：每个工具必须提供 title，
+ * 以及 readOnlyHint / destructiveHint 中适用的那一项。
+ * 这些注解决定 Claude 的自动授权行为——只读工具可免逐次确认，破坏性工具必定弹确认。
+ */
+export interface McpToolAnnotations {
+  /** 人类可读的工具标题 */
+  title: string;
+  /** 工具不修改任何数据。为 true 时 destructiveHint 无意义 */
+  readOnlyHint: boolean;
+  /** 工具可能删除或覆盖已有数据（区别于纯新增操作） */
+  destructiveHint: boolean;
+  /** 相同参数重复调用不产生额外副作用 */
+  idempotentHint?: boolean;
+}
+
+/**
  * MCP工具定义
  */
 export interface McpTool {

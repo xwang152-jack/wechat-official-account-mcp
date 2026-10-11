@@ -3,7 +3,8 @@ import { WechatApiClient } from '../wechat/api-client.js';
 import { AuthManager } from '../auth/auth-manager.js';
 import { logger } from '../utils/logger.js';
 import { wechatTools, mcpTools } from './tools/index.js';
-import { WechatToolResult, WechatToolArgs, McpTool } from './types.js';
+import { PUBLIC_TOOLS, PUBLIC_ANNOTATIONS } from './public-tools.js';
+import { WechatToolResult, WechatToolArgs, McpTool, McpToolAnnotations } from './types.js';
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { ServerRequest, ServerNotification, CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
@@ -34,8 +35,8 @@ export class WechatMcpTool {
     if (tools && tools.length > 0) {
       this.enabledTools = tools;
     } else {
-      // 默认启用所有MCP工具
-      this.enabledTools = mcpTools.map(tool => tool.name);
+      // 默认启用全部对外工具（域工具 + 元工具 + 统计）
+      this.enabledTools = PUBLIC_TOOLS.map(tool => tool.name);
     }
 
     this.initialized = true;
@@ -43,13 +44,13 @@ export class WechatMcpTool {
   }
 
   /**
-   * 获取所有可用的工具
+   * 获取对外暴露的工具列表
    */
   getTools(): McpTool[] {
     if (!this.initialized) {
       this.initialize();
     }
-    return mcpTools;
+    return PUBLIC_TOOLS;
   }
 
   /**
@@ -109,15 +110,35 @@ export class WechatMcpTool {
 
     // Register each tool individually
     const tools = this.getTools();
-    
+
+    // MCP SDK 1.20+ 的 registerTool 泛型会对 inputSchema 做 ShapeOutput 映射推断，
+    // 而 SDK 的 AnySchema 联合了 zod v3/v4 两套类型（zod-compat），
+    // 配合 McpTool.inputSchema 的宽类型声明会导致类型实例化无法收敛（TS2589）。
+    // 这里用不引用 SDK 类型的窄化签名绕开泛型推断——运行时行为完全不变，
+    // 参数校验仍由各工具内部的 zod schema 执行。
+    const register = server.registerTool.bind(server) as (
+      name: string,
+      config: {
+        description: string;
+        inputSchema: Record<string, unknown>;
+        annotations?: McpToolAnnotations;
+      },
+      cb: (
+        params: Record<string, unknown>,
+        extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+      ) => Promise<CallToolResult>
+    ) => unknown;
+
     for (const tool of tools) {
-      server.registerTool(
+      register(
         tool.name,
         {
           description: tool.description,
-          inputSchema: tool.inputSchema
+          inputSchema: tool.inputSchema,
+          // 注解决定 Claude 的自动授权：只读工具免逐次确认，破坏性工具必定弹确认
+          annotations: PUBLIC_ANNOTATIONS[tool.name]
         },
-        async (params: Record<string, unknown>, _extra: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<CallToolResult> => {
+        async (params, _extra) => {
           void _extra;
           try {
             logger.debug(`[WechatMcpTool] Calling tool: ${tool.name}`);
@@ -129,7 +150,10 @@ export class WechatMcpTool {
             return result as unknown as CallToolResult;
           } catch (error) {
             logger.error(`[WechatMcpTool] Error in tool ${tool.name}:`, error);
+            // isError 必须置位，否则失败调用在协议层看起来是一次成功结果，
+            // Claude 无法区分「操作成功」与「操作报错」
             return {
+              isError: true,
               content: [{
                 type: 'text' as const,
                 text: `Error: ${error instanceof Error ? error.message : String(error)}`
