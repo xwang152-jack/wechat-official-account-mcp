@@ -31,3 +31,6 @@ data/
 .env
 .env.*
 !.env.example
+
+# 知识图谱生成物
+graphify-out/

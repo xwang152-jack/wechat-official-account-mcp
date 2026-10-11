@@ -15,10 +15,10 @@
     "moduleDetection": "force",
     "noEmit": false,
     "outDir": "./dist",
+    "rootDir": ".",
     "declaration": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
@@ -43,7 +43,6 @@
     "src/mcp-tool",
     "src/storage",
     "src/utils",
-    "src/wechat",
-    "api"
+    "src/wechat"
   ]
 }

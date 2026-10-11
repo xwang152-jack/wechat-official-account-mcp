@@ -1,9 +1,7 @@
 # Source files (exclude from npm package)
 src/
-api/
 
 # Development files
-.trae/
 .vscode/
 .env*
 
@@ -118,7 +116,6 @@ data/
 *.tsbuildinfo
 
 # Build tools
-vite.config.ts
 tsconfig.json
 tsconfig.*.json
 

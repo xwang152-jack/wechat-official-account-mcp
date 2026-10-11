@@ -10,14 +10,11 @@
     "skipLibCheck": true
   },
   "include": [
-    "src/**/*",
-    "api/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "src/**/*.test.ts",
-    "src/**/*.test.tsx",
     "src/**/*.spec.ts",
-    "src/**/*.spec.tsx",
     "**/__tests__/**",
     "**/*.test.*",
     "**/*.spec.*",
@@ -26,9 +23,6 @@
     "coverage",
     "*.config.ts",
     "*.config.js",
-    "vite.config.ts",
-    "tailwind.config.js",
-    "postcss.config.js",
     "eslint.config.js"
   ]
 }
