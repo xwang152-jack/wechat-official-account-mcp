@@ -38,20 +38,23 @@ rsync -az --delete \
   --exclude node_modules --exclude dist --exclude data --exclude graphify-out \
   --exclude deploy --exclude .env \
   ./ ubuntu@<server>:/opt/wechat-mcp/
-
-# 编译产物（服务器未装 tsc）
-rsync -az --delete ./dist/ ubuntu@<server>:/opt/wechat-mcp/dist/
 ```
 
 > `deploy/` 被排除是有意的：它只存放部署配置，服务器上不参与运行，避免同步时
 > 覆盖服务器侧已调整过的配置。
+>
+> 无需同步 `dist/` —— 服务器具备完整依赖，可自行编译（见下节）。
 
-## 三、安装依赖
+## 三、安装依赖并构建
 
 ```bash
 cd /opt/wechat-mcp
-npm_config_build_from_source=true npm ci --omit=dev --no-audit --no-fund
+npm_config_build_from_source=true npm ci --no-audit --no-fund
+npm run build:prod
 ```
+
+装**完整依赖**（含 devDependencies）而非 `--omit=dev`，这样服务器上就有 `tsc`
+可自行编译，不必每次从本机同步 `dist/`。
 
 `npm_config_build_from_source=true` 让 sqlite3 直接源码编译，跳过会长时间超时的
 GitHub 预编译包下载。
@@ -111,7 +114,18 @@ journalctl -u wechat-mcp -f
 sudo systemctl restart wechat-mcp
 ```
 
-**更新代码**：重复第二节的 rsync，再 `sudo systemctl restart wechat-mcp`。
+**更新代码**：
+
+```bash
+# 本机
+rsync -az --delete --exclude node_modules --exclude dist --exclude data \
+  --exclude graphify-out --exclude deploy --exclude .env \
+  ./ ubuntu@<server>:/opt/wechat-mcp/
+
+# 服务器（依赖未变时可跳过 npm ci）
+cd /opt/wechat-mcp && npm ci --no-audit --no-fund && npm run build:prod \
+  && sudo systemctl restart wechat-mcp
+```
 
 ## 注意
 
