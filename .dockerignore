@@ -7,6 +7,7 @@ graphify-out
 *.md
 !README.md
 scripts
+deploy
 .env
 .env.*
 *.log

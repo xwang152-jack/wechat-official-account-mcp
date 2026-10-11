@@ -1,0 +1,27 @@
+[Unit]
+Description=WeChat Official Account MCP Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/wechat-mcp
+EnvironmentFile=/opt/wechat-mcp/.env
+ExecStart=/usr/local/bin/node dist/src/cli.js mcp -m http --host 127.0.0.1 -p 3000
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wechat-mcp
+
+# 最小权限加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# 仅放行数据目录可写（SQLite 库与自动生成的加密密钥都落在这里）
+ReadWritePaths=/opt/wechat-mcp/data
+
+[Install]
+WantedBy=multi-user.target

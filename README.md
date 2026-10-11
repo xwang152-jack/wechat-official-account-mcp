@@ -98,6 +98,9 @@ npx wechat-official-account-mcp mcp -m http -p 3000
 
 `--mode sse` 保留但已废弃（该传输无鉴权且被 MCP 规范取代），建议改用 `http`。
 
+也可以直接用 Docker：`docker compose up -d`（见 `docker-compose.yml`）。
+以 systemd + nginx 部署为常驻服务（含 HTTPS 证书与运维步骤）见 **[deploy/README.md](./deploy/README.md)**。
+
 ---
 
 ## 开发
