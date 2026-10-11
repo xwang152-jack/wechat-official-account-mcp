@@ -1,0 +1,23 @@
+services:
+  wechat-mcp:
+    build: .
+    image: wechat-mcp:latest
+    container_name: wechat-mcp
+    restart: unless-stopped
+
+    # 只绑本机：对外由 nginx 反向代理，容器端口不直接暴露
+    ports:
+      - "127.0.0.1:3000:3000"
+
+    env_file:
+      - .env
+
+    volumes:
+      # 持久化 SQLite 库与自动生成的加密密钥文件
+      - ./data:/app/data
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
