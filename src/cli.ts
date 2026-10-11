@@ -21,11 +21,13 @@ program
   .option('-m, --mode <mode>', 'Transport mode (stdio|sse)', 'stdio')
   .option('-p, --port <port>', 'Port for SSE mode', '3000')
   .action(async (options) => {
-    const { appId, appSecret, mode, port } = options;
+    const { mode, port } = options;
+    const appId = options.appId || process.env.WECHAT_APP_ID;
+    const appSecret = options.appSecret || process.env.WECHAT_APP_SECRET;
 
     if (!appId || !appSecret) {
       logger.error('App ID and App Secret are required');
-      logger.info('Usage: npx wechat-mcp mcp -a <app_id> -s <app_secret>');
+      logger.info('Usage: WECHAT_APP_ID=<app_id> WECHAT_APP_SECRET=<app_secret> npx wechat-mcp mcp');
       process.exit(1);
     }
 
@@ -66,6 +68,7 @@ program
     console.log('WeChat Official Account MCP Server');
     console.log('');
     console.log('Usage:');
+    console.log('  WECHAT_APP_ID=wx1234567890 WECHAT_APP_SECRET=abcdef1234567890 npx wechat-mcp mcp');
     console.log('  npx wechat-mcp mcp -a <app_id> -s <app_secret>');
     console.log('');
     console.log('Options:');
@@ -74,7 +77,13 @@ program
     console.log('  -m, --mode <mode>           Transport mode (stdio|sse), default: stdio');
     console.log('  -p, --port <port>           Port for SSE mode, default: 3000');
     console.log('');
+    console.log('Environment:');
+    console.log('  WECHAT_APP_ID               WeChat App ID');
+    console.log('  WECHAT_APP_SECRET           WeChat App Secret');
+    console.log('  WECHAT_MCP_SECRET_KEY       Storage encryption key');
+    console.log('');
     console.log('Examples:');
+    console.log('  WECHAT_APP_ID=wx1234567890 WECHAT_APP_SECRET=abcdef1234567890 npx wechat-mcp mcp');
     console.log('  npx wechat-mcp mcp -a wx1234567890 -s abcdef1234567890');
     console.log('  npx wechat-mcp mcp -a wx1234567890 -s abcdef1234567890 -m sse -p 3001');
   });

@@ -82,21 +82,24 @@ npm install
 # 3. 构建项目
 npm run build
 
-# 4. 启动服务
-node dist/src/cli.js mcp -a <your_app_id> -s <your_app_secret>
+# 4. 启动服务（推荐用环境变量，避免 AppSecret 出现在进程参数中）
+WECHAT_APP_ID=<your_app_id> WECHAT_APP_SECRET=<your_app_secret> node dist/src/cli.js mcp
 ```
 
 ### CLI 参数说明
 
-- `-a, --app-id <appId>`: 微信公众号 AppID（必需）
-- `-s, --app-secret <appSecret>`: 微信公众号 AppSecret（必需）
+- `-a, --app-id <appId>`: 微信公众号 AppID（可选；也可用 `WECHAT_APP_ID`）
+- `-s, --app-secret <appSecret>`: 微信公众号 AppSecret（可选；也可用 `WECHAT_APP_SECRET`）
 - `-m, --mode <mode>`: 传输模式，支持 `stdio`（默认）和 `sse`
 - `-p, --port <port>`: SSE 模式下的端口号（默认 3000）
 - `-h, --help`: 显示帮助信息
 
 环境变量（常用）：
+- `WECHAT_APP_ID`: 微信公众号 AppID
+- `WECHAT_APP_SECRET`: 微信公众号 AppSecret（推荐用环境变量传入，避免出现在命令行参数中）
 - `CORS_ORIGIN`: 逗号分隔的跨域来源白名单（示例：`https://a.example.com,https://b.example.com`）
-- `WECHAT_MCP_SECRET_KEY`: 开启敏感字段加密存储（AES），设置即启用
+- `WECHAT_MCP_SECRET_KEY`: 自定义敏感字段加密密钥；未设置时会自动生成本地密钥
+- `WECHAT_MCP_SECRET_KEY_FILE`: 自定义本地加密密钥文件路径（可选）
 
 ## 🔧 MCP 工具列表
 
@@ -630,8 +633,11 @@ DEBUG=true
 # 跨域来源白名单（强烈建议生产环境设置）
 CORS_ORIGIN=https://your-domain.com,https://another-domain.com
 
-# 开启敏感字段加密（设置后启用 AES 加密存储）
+# 自定义敏感字段加密密钥（可选；未设置时会自动生成本地密钥）
 WECHAT_MCP_SECRET_KEY=your-strong-secret-key
+
+# 自定义本地密钥文件路径（可选）
+WECHAT_MCP_SECRET_KEY_FILE=./data/.secret-key
 
 # 数据库路径（可选，默认为 ./data/wechat-mcp.db）
 DB_PATH=./data/wechat-mcp.db
@@ -650,7 +656,8 @@ DB_PATH=./data/wechat-mcp.db
 - **输入验证**: 所有 21 个 MCP 工具均通过 Zod schema 执行 `.parse()` 运行时验证，无任何绕过
 - **路径安全**: 文件上传路径经过 `validateFilePath()` 校验，防止路径遍历攻击
 - **凭证保护**: Access Token 在返回值中脱敏显示（前8后4），AppSecret 仅显示 `***`
-- **加密存储**: 设置 `WECHAT_MCP_SECRET_KEY` 后，`app_secret/token/encoding_aes_key/access_token` 以 AES 加密形式持久化（带 `enc:` 前缀标识）
+- **凭证传递**: CLI 支持 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET` 环境变量，推荐用环境变量传入 AppSecret，避免敏感值出现在命令行参数中
+- **加密存储**: `app_secret/token/encoding_aes_key/access_token` 默认以 AES 加密形式持久化（带 `enc:` 前缀标识）；未设置 `WECHAT_MCP_SECRET_KEY` 时会自动生成本地密钥文件
 - **日志脱敏**: 敏感字段自动识别并脱敏，非敏感信息保留原值，确保日志可读性
 - **CORS 安全**: SSE 模式默认仅允许 `localhost`，生产环境务必设置 `CORS_ORIGIN` 为精确域名白名单
 - **资源管理**: 数据库连接通过 `dispose()` 正确关闭，SSE 连接断开时清理 MCP 服务器实例

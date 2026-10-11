@@ -2,13 +2,43 @@ import sqlite3 from 'sqlite3';
 import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import CryptoJS from 'crypto-js';
 import { WechatConfig, AccessTokenInfo, MediaInfo } from '../mcp-tool/types.js';
 import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function loadOrCreateSecretKey(dbPath: string): string {
+  if (process.env.WECHAT_MCP_SECRET_KEY) {
+    return process.env.WECHAT_MCP_SECRET_KEY;
+  }
+
+  const keyPath = process.env.WECHAT_MCP_SECRET_KEY_FILE || path.join(path.dirname(dbPath), '.secret-key');
+
+  if (existsSync(keyPath)) {
+    return readFileSync(keyPath, 'utf8').trim();
+  }
+
+  const dataDir = path.dirname(keyPath);
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+
+  const secretKey = randomBytes(32).toString('base64url');
+  writeFileSync(keyPath, `${secretKey}\n`, { mode: 0o600 });
+
+  try {
+    chmodSync(keyPath, 0o600);
+  } catch {
+    logger.warn('Failed to set restricted permissions on generated secret key file');
+  }
+
+  logger.info('Generated local storage encryption key');
+  return secretKey;
+}
 
 /**
  * 存储管理器
@@ -21,7 +51,7 @@ export class StorageManager {
 
   constructor() {
     this.dbPath = process.env.DB_PATH || path.join(__dirname, '../../data/wechat-mcp.db');
-    this.secretKey = process.env.WECHAT_MCP_SECRET_KEY;
+    this.secretKey = loadOrCreateSecretKey(this.dbPath);
   }
 
   /**
