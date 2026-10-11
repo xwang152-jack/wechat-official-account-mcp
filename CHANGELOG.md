@@ -88,6 +88,36 @@ npx wechat-mcp mcp -a <appId> -s <appSecret> -m http -p 3000
 
 自托管形态则没有这两个问题：部署者持有自己的凭据，把自己的服务器 IP 加白即可。
 
+### 修复：数据库位置随运行方式漂移
+
+`StorageManager` 的默认路径原先基于 `__dirname` 计算：
+
+```js
+path.join(__dirname, '../../data/wechat-mcp.db')
+```
+
+而 `__dirname` 在编译产物里是 `dist/src/storage`，于是：
+
+| 启动方式 | 实际落库位置 |
+| --- | --- |
+| `tsx src/cli.ts`（开发） | `<项目根>/data/wechat-mcp.db` |
+| `node dist/src/cli.js`（生产 / npx） | `<项目根>/dist/data/wechat-mcp.db` |
+
+同一份配置因启动方式不同存到两个地方，且 `dist/` 会随重新构建被清掉——用户的凭据和令牌会莫名丢失，加密密钥文件（`.secret-key`）也跟着漂移。文档写的 `./data/wechat-mcp.db` 在生产态并不成立。
+
+改为基于当前工作目录：
+
+```js
+process.env.DB_PATH || path.resolve(process.cwd(), 'data/wechat-mcp.db')
+```
+
+> **升级提示**：若你先前以 `node dist/src/cli.js` 运行，配置与密钥文件此前位于 `dist/data/`。
+> 升级后请把它们移到 `<项目根>/data/`（或设 `DB_PATH` 指回原位置），否则需要重新配置凭据。
+
+### 移除 FEATURES_OVERVIEW.md
+
+该文档快照停留在 v2.0.0（15 个工具），与当前架构（14 个读写分离工具）严重脱节，保留只会误导。已删除并清理 README 中的引用链接。
+
 ### 返回值结构化：全部工具改为 JSON
 
 101 个 action 的返回从「中文散文」改为**结构化 JSON**，Claude 现在可以可靠地解析字段、复用上一轮返回的 ID。
