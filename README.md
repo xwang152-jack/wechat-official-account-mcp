@@ -9,7 +9,9 @@
 
 本项目基于 MCP 协议，为 AI 应用（如 Claude Desktop、Cursor、Trae AI 等）提供**完整**的微信公众号 API 集成。通过标准化的工具接口，AI 应用可以轻松管理微信公众号的用户、标签、菜单、素材、草稿、发布、消息、数据统计、二维码、评论、黑名单等**所有核心功能**。
 
-**当前版本**: `v2.2.0` （查看 [CHANGELOG](./CHANGELOG.md) | [v1.1.0 Release Notes](./RELEASE_NOTES_v1.1.0.md)）
+**当前版本**: `v2.2.1` （查看 [CHANGELOG](./CHANGELOG.md)）
+
+**v2.2.1 更新**: 工具架构重构为「读写分离 + 目录检索」，对外工具从 22 个多路复用工具改为 **14 个读写严格分离的工具**；对齐微信官方接口最新变化（商品卡片、图片消息草稿、发表内容统计新接口）；修复短链、发布状态码、统计字段名三处缺陷；依赖漏洞从 35 个清零。详见 [CHANGELOG](./CHANGELOG.md)。
 
 **v2.2.0 更新**: 新增 6 个工具模块（二维码、短链接、评论管理、黑名单、客服账号、账号管理），从 15 个工具扩展到 21 个工具。
 
@@ -35,7 +37,7 @@
 
 ## 🛠️ 技术栈
 
-- **运行时**: Node.js 18+
+- **运行时**: Node.js 20.17+（受 sqlite3 v6 约束）
 - **语言**: TypeScript
 - **协议**: MCP (Model Context Protocol)
 - **数据库**: SQLite
@@ -103,368 +105,83 @@ WECHAT_APP_ID=<your_app_id> WECHAT_APP_SECRET=<your_app_secret> node dist/src/cl
 
 ## 🔧 MCP 工具列表
 
-### 1. 认证工具 (`wechat_auth`)
+对外暴露 **14 个工具**，按「读写分离 + 目录检索」组织。所有工具返回 JSON。
 
-管理微信公众号认证配置和 Access Token。
+### 架构说明
 
-**支持操作**:
-- `configure`: 配置 AppID 和 AppSecret
-- `get_token`: 获取当前 Access Token
-- `refresh_token`: 刷新 Access Token
-- `get_config`: 查看当前配置
+Anthropic connector 审核要求**只读与写入操作必须位于不同工具**。但本项目原有 22 个工具是「一个工具 + `action` 枚举」的多路复用模式，直接按读写两两拆分会得到约 38 个工具，反而落入审核文档自己劝退的「30+ 应改用 search + execute」区间。
 
-### 2. 素材上传工具 (`wechat_media_upload`)
+因此采用**混合模式**：
 
-上传和管理微信公众号临时素材。
+- **高频业务域** → 拆成 `*_read` / `*_write` 一对，读写严格分离
+- **长尾能力** → 由 `search_actions` 检索 + `execute_read_action` / `execute_write_action` 执行
+- **数据统计** → 本身全部只读，保持独立工具
 
-**支持操作**:
-- `upload`: 上传素材（图片、语音、视频、缩略图）
-- `get`: 获取素材信息
-- `list`: 暂不支持（临时素材有效期 3 天，建议使用永久素材功能）
+最终 14 个工具落在官方推荐的 1–15 甜蜜区。
 
-**支持格式**:
-- 图片：JPG、PNG（大小不超过 10MB）
-- 语音：MP3、WMA、WAV、AMR（大小不超过 10MB，时长不超过 60s）
-- 视频：MP4（大小不超过 10MB）
-- 缩略图：JPG（大小不超过 64KB）
+### 一、元工具（长尾能力入口）
 
-### 3. 图文消息图片上传工具 (`wechat_upload_img`)
+**1. `search_actions`** — 检索服务支持的全部动作（共 101 个）
 
-上传图文消息内所需的图片，不占用素材库限制。
+- `query`: 检索关键词，中英文均可，多词为 AND 语义
+- `mode`: 按读写模式过滤（`r` 只读 / `w` 仅新增 / `d` 删除覆盖）
+- `limit`: 返回条数上限，默认 20
 
-**支持操作**:
-- `upload`: 上传图片（支持文件路径或base64数据）
+返回动作 ID、读写模式与说明。**不调用微信接口，不修改任何数据。**
 
-**支持格式**:
-- 图片：JPG、PNG（大小不超过 1MB）
+**2. `execute_read_action`** — 执行只读动作
 
-**特点**:
-- 不占用公众号素材库的100000个图片限制
-- 专用于图文消息内容中的图片
-- 返回可直接在图文消息中使用的图片URL
+- `action_id`: 动作 ID，如 `wechat_menu.get`
+- `params`: 业务参数对象
 
-### 4. 永久素材工具 (`wechat_permanent_media`)
+只接受模式为 `r` 的动作，传入写操作会被直接拒绝。
 
-管理微信公众号永久素材。
+**3. `execute_write_action`** — 执行写入动作
 
-**支持操作**:
-- `add`: 上传永久素材（图片、语音、视频、缩略图）
-- `add`: 上传永久图文素材（`type: news`）
-- `update`: 更新永久图文素材中的指定文章
-- `get`: 获取永久素材
-- `delete`: 删除永久素材
-- `list`: 获取素材列表
-- `count`: 获取素材总数统计
+- `action_id`: 动作 ID，如 `wechat_menu.create`
+- `params`: 业务参数对象
 
-### 5. 草稿管理工具 (`wechat_draft`)
+只接受模式为 `w`（仅新增）或 `d`（删除覆盖）的动作。
 
-管理微信公众号图文草稿。
+> 长尾能力覆盖：菜单、二维码、短链、客服账号、账号配额与 rid 排查、openid 转换、自动回复规则、商品卡片、认证配置。
 
-**支持操作**:
-- `add`: 新建草稿
-- `update`: 更新草稿中的指定文章
-- `get`: 获取草稿详情
-- `delete`: 删除草稿
-- `list`: 获取草稿列表
-- `count`: 获取草稿总数
+### 二、域工具（高频业务，读写成对）
 
-### 6. 发布工具 (`wechat_publish`)
-
-管理微信公众号文章发布。
+每个域提供 `*_read`（只读）与 `*_write`（写入）两个工具，用 `action` 参数选择具体操作。
 
-**支持操作**:
-- `submit`: 发布草稿
-- `get`: 获取发布状态
-- `delete`: 删除发布
-- `list`: 获取发布列表
-
-### 7. 用户管理工具 (`wechat_user`)
+| 工具 | 只读 action | 写入/破坏性 action |
+| --- | --- | --- |
+| `wechat_content_read` / `wechat_content_write` | 草稿 get/list/count、发布 get/list | 草稿 add/update/delete、发布 submit/delete |
+| `wechat_media_read` / `wechat_media_write` | 永久素材 get/list/count、临时素材 get/list | 永久素材 add/update/delete、临时素材 upload、图文内图片上传 |
+| `wechat_audience_read` / `wechat_audience_write` | 用户列表/资料/增减统计、标签列表、黑名单列表 | 设置备注、标签增删改与批量打标、拉黑/取消拉黑 |
+| `wechat_engagement_read` / `wechat_engagement_write` | 评论列表 | 开关评论、精选/取消精选、回复、删除评论与回复 |
+| `wechat_messaging_read` / `wechat_messaging_write` | 模板列表与行业、客服聊天记录、群发预览 | 模板消息发送与管理、客服消息、订阅通知、群发与删除 |
 
-管理微信公众号用户信息和数据统计。
+**示例：**
 
-**支持操作**:
-- `get_user_list`: 获取用户列表（支持分页）
-- `get_user_info`: 获取用户基本信息
-- `batch_get_user_info`: 批量获取用户信息（最多100个）
-- `set_remark`: 设置用户备注名
-- `get_user_summary`: 获取用户增减数据
-- `get_user_cumulate`: 获取累计用户数据
-
-**使用场景**:
-- 用户画像分析
-- 用户增长追踪
-- 用户信息管理
-
-### 8. 标签管理工具 (`wechat_tag`)
-
-管理用户标签，实现用户分组。
-
-**支持操作**:
-- `create`: 创建新标签
-- `get_list`: 获取所有标签
-- `update`: 编辑标签名称
-- `delete`: 删除标签
-- `batch_tagging`: 批量为用户打标签
-- `batch_untagging`: 批量为用户取消标签
-- `get_tag_users`: 获取标签下的用户列表
-
-**使用场景**:
-- 用户分组管理
-- 精准营销
-- 用户分层运营
-
-### 9. 自定义菜单工具 (`wechat_menu`)
-
-管理公众号底部菜单。
-
-**支持操作**:
-- `create`: 创建自定义菜单
-- `get`: 查询当前菜单
-- `delete`: 删除菜单
-- `add_conditional`: 创建个性化菜单
-- `delete_conditional`: 删除个性化菜单
-- `get_selfmenu_info`: 获取菜单配置
-
-**菜单类型**:
-- click: 点击推事件
-- view: 跳转URL
-- scancode_push: 扫码推事件
-- pic_photo_or_album: 拍照或相册发图
-- location_select: 发送位置
-
-**使用场景**:
-- 功能导航
-- 活动推广
-- 自定义服务入口
-
-### 10. 模板消息工具 (`wechat_template_msg`)
-
-发送服务通知类模板消息。
-
-**支持操作**:
-- `send`: 发送模板消息
-- `set_industry`: 设置账号所属行业
-- `add_template`: 从模板库添加模板
-- `get_all_templates`: 获取所有模板
-- `delete`: 删除模板
-- `get_industry`: 获取账号所属行业
-
-**使用场景**:
-- 订单通知
-- 支付成功通知
-- 预约提醒
-- 物流更新
-
-**注意**: 模板消息需要先在微信公众平台后台配置模板。
-
-### 11. 客服消息工具 (`wechat_customer_service`)
-
-在用户动作后48小时内主动发送消息。
-
-**支持操作**:
-- `send_text`: 发送文本消息
-- `send_image`: 发送图片消息
-- `send_voice`: 发送语音消息
-- `send_video`: 发送视频消息
-- `send_music`: 发送音乐消息
-- `send_news`: 发送图文消息
-- `send_mpnews`: 发送永久图文素材
-- `get_records`: 获取客服聊天记录
-
-**使用场景**:
-- 用户咨询回复
-- 售后服务
-- 主动关怀
-
-**限制**: 只能在用户产生动作后48小时内发送。
-
-### 12. 数据统计分析工具 (`wechat_statistics`)
-
-获取公众号运营数据分析。
-
-**支持操作**:
-- `get_article_summary`: 图文群发每日数据
-- `get_article_total`: 图文群发总数据
-- `get_user_read`: 图文统计数据
-- `get_user_share`: 图文分享转发数据
-- `get_upstream_message`: 消息发送概况
-- `get_interface_summary`: 接口分析数据
-- `get_interface_summary_hour`: 接口分时数据
-
-**数据维度**:
-- 用户分析
-- 图文分析
-- 消息分析
-- 接口分析
-
-**使用场景**:
-- 运营数据分析
-- 内容效果评估
-- 接口性能监控
+```
+wechat_content_read  { action: "list", count: 10 }              # 列出最近草稿
+wechat_content_write { action: "add", articles: [ ... ] }        # 新建草稿
+wechat_content_write { action: "submit", mediaId: "..." }        # 提交发布
+```
 
-### 13. 自动回复工具 (`wechat_auto_reply`)
+### 三、数据统计
 
-查询自动回复规则配置。
-
-**支持操作**:
-- `get_current_info`: 获取当前自动回复规则
-
-**包含信息**:
-- 关注后自动回复
-- 消息自动回复
-- 关键词自动回复
-
-**使用场景**:
-- 查看当前配置
-- 调试自动回复规则
-
-### 14. 群发消息工具 (`wechat_mass_send`)
-
-向用户群发消息。
-
-**支持操作**:
-- `send_by_tag`: 根据标签群发
-- `send_by_openid`: 根据OpenID列表群发
-- `delete`: 删除群发
-- `preview`: 预览群发消息
-
-**支持消息类型**:
-- mpnews: 图文消息
-- text: 文本消息
-- voice: 语音消息
-- image: 图片消息
-- mpvideo: 视频消息
-- wxcard: 卡券消息
+**14. `wechat_statistics`** — 完全只读
 
-**限制说明**:
-- 订阅号：每天只能群发1条
-- 服务号：每月可群发4条
-- 群发给全部用户需要管理员二次确认
+- 发表内容系列（推荐）：`get_article_read`、`get_article_share`、`get_biz_summary`、`get_article_total_detail`
+- 旧图文系列（微信官方已标注停止维护）：`get_article_summary`、`get_article_total`、`get_user_read`、`get_user_share`
+- 消息与接口：`get_upstream_message`、`get_interface_summary`、`get_interface_summary_hour`
 
-**使用场景**:
-- 内容推送
-- 活动通知
-- 节日问候
+> 发表内容系列数据自 2025-11-01 起、仅认证账号可用；其中 `get_article_read`、`get_article_share`、`get_article_total_detail` 的日期跨度仅支持 1 天，`get_biz_summary` 最长 30 天。
 
-### 15. 订阅通知工具 (`wechat_subscribe_msg`)
+### 首次配置
 
-发送一次性订阅通知。
-
-**支持操作**:
-- `send`: 发送订阅通知
-
-**特点**:
-- 需要用户主动订阅
-- 一次性推送
-- 可包含小程序跳转
-
-**使用场景**:
-- 服务进度通知
-- 预约成功通知
-- 重要事件提醒
-
-**注意**: 订阅通知是模板消息的升级版，需要用户授权。
-
-### 16. 二维码管理工具 (`wechat_qrcode`)
-
-创建和管理微信公众号二维码。
-
-**支持操作**:
-- `create_temp`: 创建临时二维码（最长30天有效期）
-- `create_permanent`: 创建永久二维码
-- `get_url`: 通过 ticket 获取二维码图片URL
-
-**二维码类型**:
-- 临时二维码：最长30天，适用于活动推广
-- 永久二维码：无过期时间，适用于渠道追踪
-
-**使用场景**:
-- 渠道追踪
-- 线下推广
-- 扫码关注
-- 活动统计
-
-### 17. 短链接工具 (`wechat_short_url`)
-
-将长链接转换为微信短链接。
-
-**支持操作**:
-- `generate`: 生成短链接
-
-**使用场景**:
-- 二维码内容缩短
-- 短信链接
-- 分享链接优化
-
-### 18. 评论管理工具 (`wechat_comment`)
-
-管理已群发文章的评论功能。
-
-**支持操作**:
-- `open`: 打开文章评论
-- `close`: 关闭文章评论
-- `list`: 查看评论列表（支持分页和类型筛选）
-- `mark_elect`: 标记精选评论
-- `unmark_elect`: 取消精选标记
-- `delete`: 删除评论
-- `reply`: 回复评论
-- `delete_reply`: 删除评论回复
-
-**评论类型**:
-- 0: 全部评论
-- 1: 普通评论
-- 2: 精选评论
-
-**使用场景**:
-- 文章互动管理
-- 精选评论展示
-- 用户互动回复
-
-### 19. 黑名单管理工具 (`wechat_blacklist`)
-
-管理公众号用户黑名单。
-
-**支持操作**:
-- `get_list`: 获取黑名单列表（支持分页）
-- `block`: 拉黑用户（最多20个）
-- `unblock`: 取消拉黑用户（最多20个）
-
-**使用场景**:
-- 恶意用户屏蔽
-- 用户行为管理
-
-**注意**: 被拉黑的用户无法收到公众号消息。
-
-### 20. 客服账号管理工具 (`wechat_kf_account`)
-
-管理公众号客服账号。
-
-**支持操作**:
-- `add`: 添加客服账号
-- `update`: 修改客服账号
-- `delete`: 删除客服账号
-- `get_list`: 获取客服列表
-
-**使用场景**:
-- 多客服管理
-- 客服人员配置
-
-**注意**: 客服账号格式为 `账号@公众号昵称`。
-
-### 21. 账号管理工具 (`wechat_account`)
-
-管理公众号 API 调用配额。
-
-**支持操作**:
-- `clear_quota`: 重置 API 调用次数
-- `get_quota`: 查询 API 调用次数配额
-
-**使用场景**:
-- API 调用频率监控
-- 配额管理
-- 调试接口限流
-
-**注意**: 重置 API 调用次数每月只能操作10次。
+```
+1. search_actions        { query: "认证" }
+2. execute_write_action  { action_id: "wechat_auth.configure",
+                           params: { appId: "wx...", appSecret: "..." } }
+```
 
 ## 📁 项目结构
 
@@ -482,7 +199,10 @@ src/
 ├── mcp-tool/            # MCP 工具实现
 │   ├── index.ts         # 工具管理器（统一错误处理）
 │   ├── types.ts         # 类型定义
-│   └── tools/           # 21 个工具实现（均含 Zod 验证）
+│   ├── registry.ts      # 101 个动作的目录（读写模式的唯一事实来源）
+│   ├── domains.ts       # 域工具生成器（读写成对）
+│   ├── public-tools.ts  # 对外工具面（14 个）
+│   └── tools/           # 22 个实现层工具（均含 Zod 验证，经 registry 分发）
 ├── auth/                # 认证管理
 │   └── auth-manager.ts  # Token 管理 + dispose()
 ├── wechat/              # 微信 API 客户端
@@ -653,7 +373,7 @@ DB_PATH=./data/wechat-mcp.db
 ## 🔒 安全说明
 
 - **TypeScript strict 模式**: 全项目启用严格类型检查，消除隐式 any 和空值风险
-- **输入验证**: 所有 21 个 MCP 工具均通过 Zod schema 执行 `.parse()` 运行时验证，无任何绕过
+- **输入验证**: 所有 22 个 MCP 工具均通过 Zod schema 执行 `.parse()` 运行时验证，无任何绕过
 - **路径安全**: 文件上传路径经过 `validateFilePath()` 校验，防止路径遍历攻击
 - **凭证保护**: Access Token 在返回值中脱敏显示（前8后4），AppSecret 仅显示 `***`
 - **凭证传递**: CLI 支持 `WECHAT_APP_ID` 和 `WECHAT_APP_SECRET` 环境变量，推荐用环境变量传入 AppSecret，避免敏感值出现在命令行参数中

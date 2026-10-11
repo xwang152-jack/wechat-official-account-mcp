@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a WeChat Official Account MCP (Model Context Protocol) server that provides AI applications like Claude Desktop, Cursor, and Trae AI with seamless integration to WeChat Official Account APIs. The project implements MCP tools for managing WeChat media, drafts, and publishing functionality.
 
-**Tech Stack**: Node.js 18+, TypeScript, MCP SDK, SQLite, Axios, Zod, Express (for SSE transport), crypto-js (for encryption)
+**Tech Stack**: Node.js 20.17+, TypeScript, MCP SDK, SQLite, Axios, Zod, Express (for SSE transport), crypto-js (for encryption)
 
 ## Essential Commands
 
@@ -148,16 +148,27 @@ SQLite database at `./data/wechat-mcp.db` with tables:
 - `drafts` - Draft content storage
 - `publishes` - Publication records
 
-## MCP Tools Available
+## Tool Architecture
 
-All tools are registered in `src/mcp-tool/tools/index.ts`:
+**Two layers — do not confuse them.**
 
-1. **wechat_auth** - Configure auth, get/refresh tokens, view config
-2. **wechat_media_upload** - Upload/get temporary media (images, voice, video, thumb)
-3. **wechat_upload_img** - Upload article images (doesn't count toward material limit)
-4. **wechat_permanent_media** - Manage permanent materials (add/get/delete/list/count)
-5. **wechat_draft** - Draft CRUD operations (add/get/delete/list/count)
-6. **wechat_publish** - Publish drafts and check status
+- **Implementation layer** (`src/mcp-tool/tools/`, 22 tools): the original multiplexed tools (`wechat_draft` with `add/update/get/...`). These are **not registered with MCP clients**. They are dispatched by the registry.
+- **Public surface** (`src/mcp-tool/public-tools.ts`, 14 tools): what clients actually see.
+
+The public surface follows read/write separation, which Anthropic connector review treats as pass/fail:
+
+| Kind | Tools |
+| --- | --- |
+| Meta | `search_actions`, `execute_read_action`, `execute_write_action` |
+| Domain pairs | `wechat_{content,media,audience,engagement,messaging}_{read,write}` |
+| Analytics | `wechat_statistics` (all read-only) |
+
+`src/mcp-tool/registry.ts` holds the action catalog — **the single source of truth** for each of the 101 actions' mode (`r` read-only / `w` additive write / `d` destructive). Domain tools are *generated* from it; their action implementations and parameter schemas are reused from the implementation layer.
+
+Rules when changing this:
+- A new action must be registered in `ACTION_CATALOG`, or `npm test` fails.
+- Never let a `*_read` tool expose a non-`r` action — `npm test` and `scripts/verify-mcp-protocol.mjs` both guard this, and `dispatchAction()` rejects it at runtime.
+- Long-tail capabilities stay behind `search_actions` + `execute_*_action` rather than getting their own tool; this keeps the surface in the recommended 1–15 range.
 
 ## Important Implementation Notes
 
@@ -169,7 +180,7 @@ All tools are registered in `src/mcp-tool/tools/index.ts`:
 - **CLI Executable**: The `postbuild` script ensures `dist/src/cli.js` has executable permissions (`chmod +x`)
 - **API Client Pattern**: The `WechatApiClient` class has automatic token injection via request interceptor - never manually add `access_token` to URLs
 - **Storage**: SQLite database at `./data/wechat-mcp.db` (auto-created on first run); the `data/` directory is gitignored
-- **Testing**: No test files exist yet in the codebase; `npm test` will run Jest but finds no tests
+- **Testing**: No Jest/Vitest suite exists. `npm test` runs `build:prod` then `test-tools.js`, which asserts tool registration (count/uniqueness/handler) and the stdio log-channel contract. `npm run verify` runs `scripts/verify-upgrade.mjs` (draft field mapping, cross-field validation, statistics date guard, publish status mapping)
 
 ## Testing & Quality
 
@@ -199,6 +210,9 @@ All tools are registered in `src/mcp-tool/tools/index.ts`:
 3. Define your Zod schema (reuse existing schemas from `utils/validation.ts` when possible)
 4. Export the tool implementing `McpTool` interface
 5. Add to the `mcpTools` array in `src/mcp-tool/tools/index.ts`
+6. **Register its annotations in `TOOL_ANNOTATIONS`** (same file). Required: `title`, `readOnlyHint`, `destructiveHint`. Anthropic connector review treats a missing annotation as a pass/fail failure. `npm test` fails if a tool has no annotation entry.
+
+**Tool annotations**: `readOnlyHint: true` for tools that never modify remote data; `destructiveHint: true` for tools that can delete or overwrite existing remote content (as opposed to purely additive operations). These drive Claude's auto-permission behavior — read-only tools skip per-call confirmation, destructive tools always prompt.
 
 ### Error Response Format
 
@@ -215,6 +229,7 @@ return {
 For errors, the `WechatMcpTool.registerTools()` wrapper automatically catches exceptions and returns:
 ```typescript
 {
+  isError: true,          // 必须置位，否则失败调用在协议层看起来是一次成功结果
   content: [{
     type: 'text',
     text: `Error: ${error.message}`
