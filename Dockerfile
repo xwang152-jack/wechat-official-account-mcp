@@ -16,11 +16,9 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# sqlite3 无预编译产物时需从源码编译，保留最小构建工具集
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ \
- && rm -rf /var/lib/apt/lists/*
-
+# 不装 python3/make/g++：sqlite3 v6 是 N-API 模块，bookworm 上可直接取得预编译产物。
+# 若某平台无对应预编译包导致 npm ci 失败，再补上构建工具（注意会显著拖长构建时间）：
+#   RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
