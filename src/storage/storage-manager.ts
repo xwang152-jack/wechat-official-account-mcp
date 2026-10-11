@@ -1,15 +1,11 @@
 import sqlite3 from 'sqlite3';
 import { promisify } from 'util';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import CryptoJS from 'crypto-js';
 import { WechatConfig, AccessTokenInfo, MediaInfo } from '../mcp-tool/types.js';
 import { logger } from '../utils/logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 function loadOrCreateSecretKey(dbPath: string): string {
   if (process.env.WECHAT_MCP_SECRET_KEY) {
@@ -50,7 +46,11 @@ export class StorageManager {
   private secretKey: string | undefined;
 
   constructor() {
-    this.dbPath = process.env.DB_PATH || path.join(__dirname, '../../data/wechat-mcp.db');
+    // 默认路径基于**当前工作目录**，而非 __dirname。
+    // 用 __dirname 时，开发态（tsx → src/storage）落在项目根 data/，
+    // 生产态（node dist → dist/src/storage）却落在 dist/data/——
+    // 同一份配置因启动方式不同而存到两个地方，且 dist/ 会随重新构建被清掉。
+    this.dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'data/wechat-mcp.db');
     this.secretKey = loadOrCreateSecretKey(this.dbPath);
   }
 
