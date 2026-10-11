@@ -2,6 +2,7 @@ import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { InitTransportServerFunction } from '../shared/index.js';
 import { AuthManager } from '../../auth/auth-manager.js';
+import { WechatApiClient } from '../../wechat/api-client.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -79,6 +80,80 @@ export const initHttpServer: InitTransportServerFunction = async (
     res.json({ status: 'ok', server: 'wechat-mcp' });
   });
 
+  // ---- 文件上传端点 ----
+  // 接收 raw body 文件，直接上传到微信永久素材库。
+  // 用法: curl -X POST -H "Authorization: Bearer <token>"
+  //        -H "Content-Type: image/jpeg" --data-binary @cover.jpg
+  //        "https://host:port/upload?filename=cover.jpg&type=image"
+  const ALLOWED_MEDIA_TYPES = new Set(['image', 'voice', 'video', 'thumb']);
+  const ALLOWED_CONTENT_PREFIXES = [
+    'image/', 'audio/', 'video/',
+  ];
+
+  app.post('/upload', requireAuth, express.raw({ type: () => true, limit: '10mb' }), async (req, res) => {
+    try {
+      const buffer = req.body as Buffer;
+      if (!buffer || buffer.length === 0) {
+        res.status(400).json({ error: 'Empty file body' });
+        return;
+      }
+
+      const filename = (req.query.filename as string) || 'upload.bin';
+      const mediaType = (req.query.type as string) || 'image';
+      const contentType = req.headers['content-type'] || 'application/octet-stream';
+
+      if (!ALLOWED_MEDIA_TYPES.has(mediaType)) {
+        res.status(400).json({
+          error: `Unsupported media type "${mediaType}". Allowed: image, voice, video, thumb`,
+        });
+        return;
+      }
+
+      const isAllowedContent = ALLOWED_CONTENT_PREFIXES.some((prefix) =>
+        contentType.startsWith(prefix),
+      );
+      if (!isAllowedContent) {
+        res.status(400).json({
+          error: `Unsupported Content-Type "${contentType}". Must start with image/, audio/, or video/`,
+        });
+        return;
+      }
+
+      // 创建独立的 AuthManager + ApiClient（与 MCP 端点相同的初始化方式）
+      const authManager = new AuthManager();
+      await authManager.initialize();
+      const { appId, appSecret } = options;
+      if (appId && appSecret) {
+        await authManager.setConfig({ appId, appSecret });
+      }
+      const apiClient = new WechatApiClient(authManager);
+
+      const result = await apiClient.addPermanentMaterial({
+        type: mediaType as 'image' | 'voice' | 'video' | 'thumb',
+        media: buffer,
+        fileName: filename,
+      });
+
+      logger.info(`Uploaded permanent material: ${result.mediaId} (${filename}, ${buffer.length} bytes)`);
+      res.json({
+        mediaId: result.mediaId,
+        url: result.url ?? null,
+        fileName: filename,
+        size: buffer.length,
+        type: mediaType,
+      });
+
+      await authManager.dispose();
+    } catch (error) {
+      logger.error('Upload endpoint error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: (error as Error).message || 'Upload failed',
+        });
+      }
+    }
+  });
+
   // ---- MCP 端点 ----
   app.post('/mcp', requireAuth, async (req, res) => {
     let authManager: AuthManager | null = null;
@@ -124,6 +199,7 @@ export const initHttpServer: InitTransportServerFunction = async (
   const server = app.listen(Number(port), host, () => {
     logger.info(`Streamable HTTP server listening on ${host}:${port}`);
     logger.info(`  MCP endpoint: http://${host}:${port}/mcp`);
+    logger.info(`  Upload endpoint: http://${host}:${port}/upload`);
     logger.info(`  Auth: ${httpToken ? 'bearer token required' : '⚠️  NONE (set MCP_HTTP_TOKEN)'}`);
   });
 
