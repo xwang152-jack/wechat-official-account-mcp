@@ -3,6 +3,7 @@ import { WechatToolResult, McpTool } from '../types.js';
 import { z } from 'zod';
 import FormData from 'form-data';
 import { mediaIdSchema, FILE_SIZE_LIMITS, validateFilePath } from '../../utils/validation.js';
+import { jsonResult } from '../json-result.js';
 
 // 媒体上传工具参数Schema
 const mediaUploadToolSchema = z.object({
@@ -82,12 +83,14 @@ async function handleMediaUploadTool(args: unknown, apiClient: WechatApiClient):
         url: uploadFileName
       });
 
-      return {
-        content: [{
-          type: 'text',
-          text: `临时素材上传成功！\n素材ID: ${result.media_id}\n类型: ${result.type}\n创建时间: ${new Date(result.created_at * 1000).toLocaleString()}`,
-        }],
-      };
+      return jsonResult({
+        action: 'upload',
+        mediaId: result.media_id,
+        type: result.type,
+        fileName: uploadFileName,
+        createdAt: result.created_at ? new Date(result.created_at * 1000).toISOString() : null,
+        url: null,
+      });
     }
 
     case 'get': {
@@ -98,21 +101,22 @@ async function handleMediaUploadTool(args: unknown, apiClient: WechatApiClient):
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const result = await apiClient.get(`/cgi-bin/media/get?media_id=${mediaId}`) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `获取临时素材成功！\n素材ID: ${mediaId}\n素材已下载到本地`,
-        }],
-      };
+      return jsonResult({
+        action: 'get',
+        mediaId,
+        downloaded: true,
+      });
     }
 
     case 'list': {
-      return {
-        content: [{
-          type: 'text',
-          text: `临时素材列表功能暂不支持，临时素材有效期为3天，建议使用永久素材功能`,
-        }],
-      };
+      return jsonResult({
+        action: 'list',
+        supported: false,
+        count: 0,
+        total: null,
+        items: [],
+        reason: '临时素材列表功能暂不支持，临时素材有效期为3天，建议使用永久素材功能',
+      });
     }
 
     default:

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const mediaIdSchema = z.string().min(1, 'MediaID不能为空');
@@ -108,16 +109,14 @@ export const massSendMcpTool: McpTool = {
 
         const result = await apiClient.sendMassMessageByTag(data);
 
-        return {
-          content: [{
-            type: 'text',
-            text: `群发消息提交成功\n` +
-                  `- 消息ID: ${result.msgId}\n` +
-                  `- 数据ID: ${result.msgDataId}\n` +
-                  `- 发送方式: ${validated.isToAll ? '全部用户' : `标签 ${validated.tagId}`}\n` +
-                  `- 消息类型: ${validated.msgtype}`
-          }]
-        };
+        return jsonResult({
+          action: 'send_by_tag',
+          msgId: result.msgId ?? null,
+          msgDataId: result.msgDataId ?? null,
+          isToAll: validated.isToAll || false,
+          tagId: validated.tagId ?? null,
+          msgType: validated.msgtype
+        });
       }
 
         case 'send_by_openid': {
@@ -165,16 +164,14 @@ export const massSendMcpTool: McpTool = {
 
           const result = await apiClient.sendMassMessageByOpenId(data);
 
-          return {
-            content: [{
-              type: 'text',
-              text: `群发消息提交成功\n` +
-                    `- 消息ID: ${result.msgId}\n` +
-                    `- 数据ID: ${result.msgDataId}\n` +
-                    `- 发送人数: ${validated.toUser.length}\n` +
-                    `- 消息类型: ${validated.msgtype}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_by_openid',
+            msgId: result.msgId ?? null,
+            msgDataId: result.msgDataId ?? null,
+            recipientCount: validated.toUser.length,
+            toUser: validated.toUser,
+            msgType: validated.msgtype
+          });
         }
 
         case 'delete': {
@@ -184,14 +181,11 @@ export const massSendMcpTool: McpTool = {
 
           await apiClient.deleteMassMessage(validated.msgId, validated.articleIdx);
 
-          return {
-            content: [{
-              type: 'text',
-              text: `群发消息删除成功\n` +
-                    `- 消息ID: ${validated.msgId}\n` +
-                    `${validated.articleIdx !== undefined ? `- 文章索引: ${validated.articleIdx}` : ''}`
-            }]
-          };
+          return jsonResult({
+            action: 'delete',
+            msgId: validated.msgId,
+            articleIdx: validated.articleIdx ?? null
+          });
         }
 
         case 'preview': {
@@ -238,15 +232,12 @@ export const massSendMcpTool: McpTool = {
 
           const result = await apiClient.previewMassMessage(data);
 
-          return {
-            content: [{
-              type: 'text',
-              text: `预览消息发送成功\n` +
-                    `- 消息ID: ${result.msgId}\n` +
-                    `- 接收者: ${validated.previewToUser}\n` +
-                    `- 消息类型: ${validated.msgtype}`
-            }]
-          };
+          return jsonResult({
+            action: 'preview',
+            msgId: result.msgId ?? null,
+            previewToUser: validated.previewToUser,
+            msgType: validated.msgtype
+          });
         }
 
       default:

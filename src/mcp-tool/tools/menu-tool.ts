@@ -1,20 +1,9 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const menuIdSchema = z.number().int().positive('菜单ID必须为正整数');
-
-// 菜单按钮接口
-interface MenuButton {
-  name: string;
-  type?: string;
-  key?: string;
-  url?: string;
-  mediaId?: string;
-  sub_button?: MenuButton[];
-  appid?: string;
-  pagepath?: string;
-}
 
 export const menuMcpTool: McpTool = {
   name: 'wechat_menu',
@@ -41,34 +30,28 @@ export const menuMcpTool: McpTool = {
         }
 
         await apiClient.createMenu(validated.menuData as Parameters<typeof apiClient.createMenu>[0]);
-        return {
-          content: [{
-            type: 'text',
-            text: `自定义菜单创建成功\n注意：菜单可能需要24小时生效，或重新关注公众号立即生效`
-          }]
-        };
+        return jsonResult({
+          action: 'create',
+          created: true,
+          note: '菜单可能需要24小时生效，或重新关注公众号立即生效',
+        });
       }
 
       case 'get': {
         const result = await apiClient.getMenu();
-        const menuText = formatMenu(result.menu?.button || []);
-
-        return {
-          content: [{
-            type: 'text',
-            text: `自定义菜单配置:\n${menuText}`
-          }]
-        };
+        // 按钮结构原样返回，可直接回填 create 的 menuData（含 sub_button 等原始字段）
+        return jsonResult({
+          action: 'get',
+          buttons: result.menu?.button ?? [],
+        });
       }
 
       case 'delete': {
         await apiClient.deleteMenu();
-        return {
-          content: [{
-            type: 'text',
-            text: `自定义菜单删除成功`
-          }]
-        };
+        return jsonResult({
+          action: 'delete',
+          deleted: true,
+        });
       }
 
       case 'add_conditional': {
@@ -77,12 +60,11 @@ export const menuMcpTool: McpTool = {
         }
 
         const result = await apiClient.addConditionalMenu(validated.menuData as Parameters<typeof apiClient.addConditionalMenu>[0]);
-        return {
-          content: [{
-            type: 'text',
-            text: `个性化菜单创建成功\n- 菜单ID: ${result.menuid}\n注意：个性化菜单需要一定时间生效`
-          }]
-        };
+        return jsonResult({
+          action: 'add_conditional',
+          menuId: result.menuid ?? null,
+          note: '个性化菜单需要一定时间生效',
+        });
       }
 
       case 'delete_conditional': {
@@ -91,24 +73,19 @@ export const menuMcpTool: McpTool = {
         }
 
         await apiClient.deleteConditionalMenu(validated.menuId);
-        return {
-          content: [{
-            type: 'text',
-            text: `个性化菜单删除成功\n- 菜单ID: ${validated.menuId}`
-          }]
-        };
+        return jsonResult({
+          action: 'delete_conditional',
+          menuId: validated.menuId,
+          deleted: true,
+        });
       }
 
       case 'get_selfmenu_info': {
         const result = await apiClient.getSelfMenuInfo();
-        const menuText = formatMenu(result.selfmenu_info?.button || []);
-
-        return {
-          content: [{
-            type: 'text',
-            text: `自定义菜单配置:\n${menuText}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_selfmenu_info',
+          buttons: result.selfmenu_info?.button ?? [],
+        });
       }
 
       default:
@@ -116,24 +93,6 @@ export const menuMcpTool: McpTool = {
     }
   }
 };
-
-// 格式化菜单显示
-function formatMenu(buttons: MenuButton[], indent: number = 0): string {
-  const prefix = '  '.repeat(indent);
-  return buttons.map((btn, index) => {
-    let text = `${prefix}${index + 1}. ${btn.name}`;
-    if (btn.type) text += ` (${btn.type})`;
-    if (btn.key) text += ` [key: ${btn.key}]`;
-    if (btn.url) text += ` [url: ${btn.url}]`;
-    if (btn.mediaId) text += ` [mediaId: ${btn.mediaId}]`;
-
-    if (btn.sub_button && btn.sub_button.length > 0) {
-      text += '\n' + formatMenu(btn.sub_button, indent + 1);
-    }
-
-    return text;
-  }).join('\n');
-}
 
 // 参数解析辅助函数
 function parseMenuParams(params: unknown) {

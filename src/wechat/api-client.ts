@@ -118,11 +118,11 @@ export class WechatApiClient {
     author?: string;
     digest?: string;
     content: string;
-    contentSourceUrl?: string;
-    thumbMediaId: string;
-    showCoverPic?: number;
-    needOpenComment?: number;
-    onlyFansCanComment?: number;
+    content_source_url?: string;
+    thumb_media_id: string;
+    show_cover_pic?: number;
+    need_open_comment?: number;
+    only_fans_can_comment?: number;
   }>): Promise<{ mediaId: string }> {
     try {
       const response = await this.httpClient.post('/cgi-bin/material/add_news', {
@@ -274,7 +274,13 @@ export class WechatApiClient {
         throw new Error(`Get user list failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        total: response.data.total,
+        count: response.data.count,
+        data: { openid: response.data.data?.openid ?? [] },
+        // 微信返回 next_openid；这里统一转成 camelCase 供工具层使用
+        nextOpenid: response.data.next_openid ?? '',
+      };
     } catch (error) {
       logger.error('Failed to get user list:', (error as any)?.message ?? String(error));
       throw error;
@@ -284,6 +290,29 @@ export class WechatApiClient {
   /**
    * 获取用户基本信息
    */
+  /**
+   * 把微信返回的用户资料（snake_case）转换为工具层的 camelCase。
+   * 微信字段：headimgurl / subscribe_time / unionid / groupid / tagid_list
+   */
+  private normalizeUserInfo(raw: any): Record<string, unknown> {
+    return {
+      subscribe: raw.subscribe,
+      openid: raw.openid,
+      nickname: raw.nickname,
+      sex: raw.sex,
+      language: raw.language,
+      city: raw.city,
+      province: raw.province,
+      country: raw.country,
+      headImgUrl: raw.headimgurl ?? null,
+      subscribeTime: raw.subscribe_time ?? null,
+      unionId: raw.unionid ?? null,
+      remark: raw.remark ?? null,
+      groupId: raw.groupid ?? null,
+      tagidList: raw.tagid_list ?? [],
+    };
+  }
+
   async getUserInfo(openId: string, lang: 'zh_CN' | 'zh_TW' | 'en' = 'zh_CN'): Promise<{
     subscribe: number;
     openid: string;
@@ -309,7 +338,7 @@ export class WechatApiClient {
         throw new Error(`Get user info failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return this.normalizeUserInfo(response.data) as any;
     } catch (error) {
       logger.error('Failed to get user info:', (error as any)?.message ?? String(error));
       throw error;
@@ -345,7 +374,9 @@ export class WechatApiClient {
         throw new Error(`Batch get user info failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        user_info_list: (response.data.user_info_list ?? []).map((u: any) => this.normalizeUserInfo(u)),
+      } as any;
     } catch (error) {
       logger.error('Failed to batch get user info:', (error as any)?.message ?? String(error));
       throw error;
@@ -582,7 +613,7 @@ export class WechatApiClient {
     }>;
   }): Promise<{ errcode: number; errmsg: string }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/menu/create', menuData);
+      const response = await this.httpClient.post('/cgi-bin/menu/create', this.buildMenuPayload(menuData));
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Create menu failed: ${response.data.errmsg} (${response.data.errcode})`);
@@ -593,6 +624,26 @@ export class WechatApiClient {
       logger.error('Failed to create menu:', (error as any)?.message ?? String(error));
       throw error;
     }
+  }
+
+  /**
+   * 把工具层的菜单结构（camelCase）转换为微信要求的字段名（snake_case）。
+   * 按钮的 mediaId 需映射为 media_id，且要递归处理 sub_button。
+   */
+  private buildMenuPayload(menuData: {
+    button: Array<{ type?: string; name: string; key?: string; url?: string; mediaId?: string; sub_button?: Array<any> }>;
+  }): Record<string, unknown> {
+    const mapButton = (btn: any): Record<string, unknown> => {
+      const out: Record<string, unknown> = { name: btn.name };
+      if (btn.type !== undefined) out.type = btn.type;
+      if (btn.key !== undefined) out.key = btn.key;
+      if (btn.url !== undefined) out.url = btn.url;
+      if (btn.mediaId !== undefined) out.media_id = btn.mediaId;
+      if (Array.isArray(btn.sub_button)) out.sub_button = btn.sub_button.map(mapButton);
+      return out;
+    };
+
+    return { button: menuData.button.map(mapButton) };
   }
 
   /**
@@ -651,7 +702,10 @@ export class WechatApiClient {
     };
   }): Promise<{ menuid: number; errcode: number; errmsg: string }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/menu/addconditional', menuData);
+      const response = await this.httpClient.post('/cgi-bin/menu/addconditional', {
+        ...this.buildMenuPayload(menuData),
+        matchrule: menuData.matchrule,
+      });
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Add conditional menu failed: ${response.data.errmsg} (${response.data.errcode})`);
@@ -717,13 +771,25 @@ export class WechatApiClient {
     data: Record<string, { value: string; color?: string }>;
   }): Promise<{ errcode: number; errmsg: string; msgid: number }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/message/template/send', data);
+      const body: Record<string, unknown> = {
+        touser: data.touser,
+        template_id: data.templateId,
+        data: data.data,
+      };
+      if (data.url !== undefined) body.url = data.url;
+      if (data.topcolor !== undefined) body.topcolor = data.topcolor;
+
+      const response = await this.httpClient.post('/cgi-bin/message/template/send', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Send template message failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        errcode: response.data.errcode ?? 0,
+        errmsg: response.data.errmsg ?? 'ok',
+        msgid: response.data.msgid,
+      };
     } catch (error) {
       logger.error('Failed to send template message:', (error as any)?.message ?? String(error));
       throw error;
@@ -748,7 +814,14 @@ export class WechatApiClient {
         throw new Error(`Get templates failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        template_list: (response.data.template_list ?? []).map((t: any) => ({
+          templateId: t.template_id,
+          title: t.title,
+          content: t.content,
+          example: t.example,
+        })),
+      };
     } catch (error) {
       logger.error('Failed to get templates:', (error as any)?.message ?? String(error));
       throw error;
@@ -789,7 +862,14 @@ export class WechatApiClient {
         throw new Error(`Get template industry failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      const mapIndustry = (raw: any) => raw
+        ? { firstClass: raw.first_class ?? null, secondClass: raw.second_class ?? null }
+        : { firstClass: null, secondClass: null };
+
+      return {
+        primary_industry: mapIndustry(response.data.primary_industry),
+        secondary_industry: mapIndustry(response.data.secondary_industry),
+      } as any;
     } catch (error) {
       logger.error('Failed to get template industry:', (error as any)?.message ?? String(error));
       throw error;
@@ -814,7 +894,12 @@ export class WechatApiClient {
     wxcard?: { cardId: string };
   }): Promise<{ errcode: number; errmsg: string }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/message/custom/send', data);
+      const body: Record<string, unknown> = {
+        touser: data.touser,
+        ...this.buildMessagePayload(data),
+      };
+
+      const response = await this.httpClient.post('/cgi-bin/message/custom/send', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Send custom message failed: ${response.data.errmsg} (${response.data.errcode})`);
@@ -866,18 +951,21 @@ export class WechatApiClient {
 
   /**
    * 获取图文群发每日数据
+   * @deprecated 官方已标注「本接口已停止维护」，请改用 getArticleRead / getArticleShare / getBizSummary / getArticleTotalDetail
    */
   async getArticleSummary(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      intPageReadUser: number;
-      intPageReadCount: number;
-      oriPageReadUser: number;
-      oriPageReadCount: number;
-      shareUser: number;
-      shareCount: number;
-      addToFavUser: number;
-      addToFavCount: number;
+      ref_date: string;
+      msgid: string;
+      title: string;
+      int_page_read_user: number;
+      int_page_read_count: number;
+      ori_page_read_user: number;
+      ori_page_read_count: number;
+      share_user: number;
+      share_count: number;
+      add_to_fav_user: number;
+      add_to_fav_count: number;
     }>;
   }> {
     try {
@@ -898,15 +986,25 @@ export class WechatApiClient {
 
   /**
    * 获取图文群发总数据
+   * @deprecated 官方已标注「本接口已停止维护」，请改用 getArticleTotalDetail
    */
   async getArticleTotal(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      userSource: number;
-      readUser: number;
-      readCount: number;
-      shareUser: number;
-      shareCount: number;
+      ref_date: string;
+      msgid: string;
+      title: string;
+      details: Array<{
+        stat_date: string;
+        target_user: number;
+        int_page_read_user: number;
+        int_page_read_count: number;
+        ori_page_read_user: number;
+        ori_page_read_count: number;
+        share_user: number;
+        share_count: number;
+        add_to_fav_user: number;
+        add_to_fav_count: number;
+      }>;
     }>;
   }> {
     try {
@@ -927,18 +1025,20 @@ export class WechatApiClient {
 
   /**
    * 获取图文统计数据
+   * @deprecated 官方已标注「本接口已停止维护」，请改用 getArticleRead / getBizSummary
    */
   async getUserRead(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      intPageReadUser: number;
-      intPageReadCount: number;
-      oriPageReadUser: number;
-      oriPageReadCount: number;
-      shareUser: number;
-      shareCount: number;
-      addToFavUser: number;
-      addToFavCount: number;
+      ref_date: string;
+      user_source: number;
+      int_page_read_user: number;
+      int_page_read_count: number;
+      ori_page_read_user: number;
+      ori_page_read_count: number;
+      share_user: number;
+      share_count: number;
+      add_to_fav_user: number;
+      add_to_fav_count: number;
     }>;
   }> {
     try {
@@ -959,13 +1059,14 @@ export class WechatApiClient {
 
   /**
    * 获取图文分享转发数据
+   * @deprecated 官方已标注「本接口已停止维护」，请改用 getArticleShare
    */
   async getUserShare(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      sharePage: number;
-      shareUser: number;
-      shareCount: number;
+      ref_date: string;
+      share_page: number;
+      share_user: number;
+      share_count: number;
     }>;
   }> {
     try {
@@ -989,10 +1090,10 @@ export class WechatApiClient {
    */
   async getUpstreamMessage(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      msgType: number;
-      msgUser: number;
-      msgCount: number;
+      ref_date: string;
+      msg_type: number;
+      msg_user: number;
+      msg_count: number;
     }>;
   }> {
     try {
@@ -1016,11 +1117,11 @@ export class WechatApiClient {
    */
   async getInterfaceSummary(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      callbackCount: number;
-      failCount: number;
-      totalTime: number;
-      maxTime: number;
+      ref_date: string;
+      callback_count: number;
+      fail_count: number;
+      total_time: number;
+      max_time: number;
     }>;
   }> {
     try {
@@ -1044,12 +1145,12 @@ export class WechatApiClient {
    */
   async getInterfaceSummaryHour(beginDate: string, endDate: string): Promise<{
     list: Array<{
-      refDate: string;
-      refHour: number;
-      callbackCount: number;
-      failCount: number;
-      totalTime: number;
-      maxTime: number;
+      ref_date: string;
+      ref_hour: number;
+      callback_count: number;
+      fail_count: number;
+      total_time: number;
+      max_time: number;
     }>;
   }> {
     try {
@@ -1064,6 +1165,181 @@ export class WechatApiClient {
       return response.data;
     } catch (error) {
       logger.error('Failed to get interface summary hour:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  // ==================== 发表内容数据统计 API（新接口，数据自 2025-11-01 起） ====================
+
+  /**
+   * 获取发表内容每日阅读数据
+   * 注意：日期范围仅支持查询 1 天，仅认证账号可调用
+   */
+  async getArticleRead(beginDate: string, endDate: string): Promise<{
+    list: Array<{
+      ref_date: string;
+      msgid: string;
+      detail: {
+        read_user: number;
+        read_user_source: Array<{ user_count: number; scene_desc: string }>;
+      };
+    }>;
+    is_delay: boolean;
+  }> {
+    try {
+      const response = await this.httpClient.get('/cgi-bin/datacube/getarticleread', {
+        params: { begin_date: beginDate, end_date: endDate }
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get article read failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get article read:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 获取发表内容每日分享数据
+   * 注意：日期范围仅支持查询 1 天，仅认证账号可调用
+   */
+  async getArticleShare(beginDate: string, endDate: string): Promise<{
+    list: Array<{
+      ref_date: string;
+      msgid: string;
+      detail: { share_user: number };
+    }>;
+    is_delay: boolean;
+  }> {
+    try {
+      const response = await this.httpClient.get('/cgi-bin/datacube/getarticleshare', {
+        params: { begin_date: beginDate, end_date: endDate }
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get article share failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get article share:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 获取发表内容概况总数据
+   * 注意：日期范围最长 30 天，仅认证账号可调用
+   */
+  async getBizSummary(beginDate: string, endDate: string): Promise<{
+    list: Array<{
+      ref_date: string;
+      detail: {
+        read_user: number;
+        read_user_source: Array<{ user_count: number; scene_desc: string }>;
+        share_user: number;
+        zaikan_user: number;
+        like_user: number;
+        comment_count: number;
+        collection_user: number;
+        redirect_ori_page_user: number;
+        send_page_count: number;
+      };
+    }>;
+    is_delay: boolean;
+  }> {
+    try {
+      const response = await this.httpClient.get('/cgi-bin/datacube/getbizsummary', {
+        params: { begin_date: beginDate, end_date: endDate }
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get biz summary failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get biz summary:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 获取发表内容发表详细数据
+   * 注意：日期范围仅支持查询 1 天，每篇内容仅统计发表日期起 30 天内数据
+   */
+  async getArticleTotalDetail(beginDate: string, endDate: string): Promise<{
+    list: Array<{
+      ref_date: string;
+      msgid: string;
+      publish_type: number;
+      title: string;
+      content_url: string;
+      detail_list: Array<{
+        stat_date: string;
+        read_user: number;
+        read_user_source: Array<{ user_count: number; scene_desc: string }>;
+        share_user: number;
+        zaikan_user: number;
+        like_user: number;
+        comment_count: number;
+        collection_user: number;
+        praise_money: number;
+        read_subscribe_user: number;
+        read_delivery_rate: number;
+        read_finish_rate: number;
+        read_avg_activetime: number;
+      }>;
+    }>;
+    is_delay: boolean;
+  }> {
+    try {
+      const response = await this.httpClient.get('/cgi-bin/datacube/getarticletotaldetail', {
+        params: { begin_date: beginDate, end_date: endDate }
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get article total detail failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get article total detail:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  // ==================== 商品卡片 API ====================
+
+  /**
+   * 获取商品卡片的 DOM 结构
+   * 用于在文章（图文消息/图片消息）中插入视频号小店商品卡片
+   * @param cardType 0大卡 1小卡 2文字链接 3条卡
+   */
+  async getProductCardInfo(productId: string, articleType: 'news' | 'newspic', cardType: number): Promise<{
+    productKey?: string;
+    DOM?: string;
+  }> {
+    try {
+      const response = await this.httpClient.post('/channels/ec/service/product/getcardinfo', {
+        product_id: productId,
+        article_type: articleType,
+        card_type: cardType,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get product card info failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return {
+        productKey: response.data.product_key,
+        DOM: response.data.DOM,
+      };
+    } catch (error) {
+      logger.error('Failed to get product card info:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -1097,7 +1373,28 @@ export class WechatApiClient {
         throw new Error(`Get auto reply info failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      // 微信返回的是完全不同名的 snake_case 结构，必须显式映射，
+      // 否则工具层读到的每个字段都是 undefined
+      const raw = response.data;
+      return {
+        isAddFriendReply: !!raw.is_add_friend_reply,
+        isAutoReply: !!raw.is_autoreply,
+        addFriendReplyInfo: raw.add_friend_autoreply_info
+          ? { type: raw.add_friend_autoreply_info.type, content: raw.add_friend_autoreply_info.content }
+          : undefined,
+        defaultMessageReplyInfoList: (raw.message_default_autoreply_info?.default_reply_list ?? []).map((r: any) => ({
+          type: r.type,
+          content: r.content,
+        })),
+        keywordAutoreplyInfoList: (raw.keyword_autoreply_info?.list ?? []).map((k: any) => ({
+          keyword: k.keyword,
+          matchMode: k.match_mode,
+          replyListInfo: (k.reply_list_info ?? []).map((r: any) => ({
+            type: r.type,
+            content: r.news_info ? r.news_info.list?.[0]?.title ?? '' : r.content,
+          })),
+        })),
+      } as any;
     } catch (error) {
       logger.error('Failed to get auto reply info:', (error as any)?.message ?? String(error));
       throw error;
@@ -1109,6 +1406,54 @@ export class WechatApiClient {
   /**
    * 根据标签进行群发
    */
+  /**
+   * 把工具层的消息载荷（camelCase）转换为微信要求的字段名（snake_case）。
+   *
+   * 群发 / 预览 / 客服消息三个接口共用同一套消息体结构，之前直接透传 camelCase
+   * 导致 media_id、card_id 等字段全部未被微信识别，消息实际发不出去。
+   */
+  private buildMessagePayload(data: {
+    msgtype: 'mpnews' | 'text' | 'voice' | 'image' | 'mpvideo' | 'wxcard' | 'video' | 'music' | 'news';
+    text?: { content: string };
+    image?: { mediaId: string };
+    voice?: { mediaId: string };
+    video?: { mediaId: string; thumbMediaId: string; title?: string; description?: string };
+    music?: { title: string; description: string; musicurl: string; hqmusicurl: string; thumbMediaId?: string };
+    news?: { articles: Array<any> };
+    mpnews?: { mediaId: string };
+    mpvideo?: { mediaId: string };
+    wxcard?: { cardId: string };
+  }): Record<string, unknown> {
+    const body: Record<string, unknown> = { msgtype: data.msgtype };
+
+    if (data.text) body.text = data.text;
+    if (data.image) body.image = { media_id: data.image.mediaId };
+    if (data.voice) body.voice = { media_id: data.voice.mediaId };
+    if (data.video) {
+      body.video = {
+        media_id: data.video.mediaId,
+        thumb_media_id: data.video.thumbMediaId,
+        title: data.video.title,
+        description: data.video.description,
+      };
+    }
+    if (data.music) {
+      body.music = {
+        title: data.music.title,
+        description: data.music.description,
+        musicurl: data.music.musicurl,
+        hqmusicurl: data.music.hqmusicurl,
+        thumb_media_id: data.music.thumbMediaId,
+      };
+    }
+    if (data.news) body.news = data.news;
+    if (data.mpnews) body.mpnews = { media_id: data.mpnews.mediaId };
+    if (data.mpvideo) body.mpvideo = { media_id: data.mpvideo.mediaId };
+    if (data.wxcard) body.wxcard = { card_id: data.wxcard.cardId };
+
+    return body;
+  }
+
   async sendMassMessageByTag(data: {
     filter: { isToAll: boolean; tagId?: number };
     mpnews?: { mediaId: string };
@@ -1119,15 +1464,26 @@ export class WechatApiClient {
     mpvideo?: { mediaId: string };
     wxcard?: { cardId: string };
     sendIgnoreReprint?: number;
-  }): Promise<{ errcode: number; errmsg: string; msgId: number; msgDataId: number }> {
+  }): Promise<{ errcode: number; errmsg: string; msgId: number | null; msgDataId: number | null }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/message/mass/sendall', data);
+      const body: Record<string, unknown> = {
+        filter: { is_to_all: data.filter.isToAll, tag_id: data.filter.tagId },
+        ...this.buildMessagePayload(data),
+      };
+      if (data.sendIgnoreReprint !== undefined) body.send_ignore_reprint = data.sendIgnoreReprint;
+
+      const response = await this.httpClient.post('/cgi-bin/message/mass/sendall', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Send mass message failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        errcode: response.data.errcode ?? 0,
+        errmsg: response.data.errmsg ?? 'ok',
+        msgId: response.data.msg_id ?? null,
+        msgDataId: response.data.msg_data_id ?? null,
+      };
     } catch (error) {
       logger.error('Failed to send mass message:', (error as any)?.message ?? String(error));
       throw error;
@@ -1147,15 +1503,26 @@ export class WechatApiClient {
     mpvideo?: { mediaId: string };
     wxcard?: { cardId: string };
     sendIgnoreReprint?: number;
-  }): Promise<{ errcode: number; errmsg: string; msgId: number; msgDataId: number }> {
+  }): Promise<{ errcode: number; errmsg: string; msgId: number | null; msgDataId: number | null }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/message/mass/send', data);
+      const body: Record<string, unknown> = {
+        touser: data.touser,
+        ...this.buildMessagePayload(data),
+      };
+      if (data.sendIgnoreReprint !== undefined) body.send_ignore_reprint = data.sendIgnoreReprint;
+
+      const response = await this.httpClient.post('/cgi-bin/message/mass/send', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Send mass message by openid failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        errcode: response.data.errcode ?? 0,
+        errmsg: response.data.errmsg ?? 'ok',
+        msgId: response.data.msg_id ?? null,
+        msgDataId: response.data.msg_data_id ?? null,
+      };
     } catch (error) {
       logger.error('Failed to send mass message by openid:', (error as any)?.message ?? String(error));
       throw error;
@@ -1167,10 +1534,10 @@ export class WechatApiClient {
    */
   async deleteMassMessage(msgId: number, articleIdx?: number): Promise<{ errcode: number; errmsg: string }> {
     try {
-      const data: any = { msgId };
-      if (articleIdx !== undefined) data.articleIdx = articleIdx;
+      const body: Record<string, unknown> = { msg_id: msgId };
+      if (articleIdx !== undefined) body.article_idx = articleIdx;
 
-      const response = await this.httpClient.post('/cgi-bin/message/mass/delete', data);
+      const response = await this.httpClient.post('/cgi-bin/message/mass/delete', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Delete mass message failed: ${response.data.errmsg} (${response.data.errcode})`);
@@ -1197,13 +1564,22 @@ export class WechatApiClient {
     wxcard?: { cardId: string };
   }): Promise<{ errcode: number; errmsg: string; msgId: number }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/message/mass/preview', data);
+      const body: Record<string, unknown> = {
+        touser: data.touser,
+        ...this.buildMessagePayload(data),
+      };
+
+      const response = await this.httpClient.post('/cgi-bin/message/mass/preview', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Preview mass message failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        errcode: response.data.errcode ?? 0,
+        errmsg: response.data.errmsg ?? 'ok',
+        msgId: response.data.msg_id,
+      };
     } catch (error) {
       logger.error('Failed to preview mass message:', (error as any)?.message ?? String(error));
       throw error;
@@ -1223,13 +1599,30 @@ export class WechatApiClient {
     data: Record<string, { value: string }>;
   }): Promise<{ errcode: number; errmsg: string; msgid: number }> {
     try {
-      const response = await this.httpClient.post('/cgi-bin/message/subscribe/send', data);
+      const body: Record<string, unknown> = {
+        touser: data.touser,
+        template_id: data.templateId,
+        data: data.data,
+      };
+      if (data.page !== undefined) body.page = data.page;
+      if (data.miniprogram) {
+        body.miniprogram = {
+          appid: data.miniprogram.appId,
+          pagepath: data.miniprogram.pagePath,
+        };
+      }
+
+      const response = await this.httpClient.post('/cgi-bin/message/subscribe/send', body);
 
       if (response.data.errcode && response.data.errcode !== 0) {
         throw new Error(`Send subscribe message failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        errcode: response.data.errcode ?? 0,
+        errmsg: response.data.errmsg ?? 'ok',
+        msgid: response.data.msgid,
+      };
     } catch (error) {
       logger.error('Failed to send subscribe message:', (error as any)?.message ?? String(error));
       throw error;
@@ -1285,22 +1678,44 @@ export class WechatApiClient {
   // ==================== 短链接 API ====================
 
   /**
-   * 长链接转短链接
+   * 长信息转短 key
+   * 注意：/cgi-bin/shorten/gen 返回的是 15 字节 base62 短 key（需用 fetchShorten 还原），
+   * 不是可直接点击的短链接。长信息不超过 4KB，有效期最长 30 天。
    */
-  async shortUrl(longUrl: string): Promise<{ shortUrl: string }> {
+  async genShortKey(longData: string, expireSeconds = 2592000): Promise<{ short_key: string }> {
     try {
       const response = await this.httpClient.post('/cgi-bin/shorten/gen', {
-        action: 'long2short',
-        long_url: longUrl,
+        long_data: longData,
+        expire_seconds: expireSeconds,
       });
 
       if (response.data.errcode && response.data.errcode !== 0) {
-        throw new Error(`Short URL failed: ${response.data.errmsg} (${response.data.errcode})`);
+        throw new Error(`Generate short key failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return { shortUrl: response.data.short_url };
+      return { short_key: response.data.short_key };
     } catch (error) {
-      logger.error('Failed to create short URL:', (error as any)?.message ?? String(error));
+      logger.error('Failed to generate short key:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 短 key 还原长信息
+   */
+  async fetchShorten(shortKey: string): Promise<{ long_data: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/shorten/fetch', {
+        short_key: shortKey,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Fetch short key failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return { long_data: response.data.long_data };
+    } catch (error) {
+      logger.error('Failed to fetch short key:', (error as any)?.message ?? String(error));
       throw error;
     }
   }
@@ -1379,7 +1794,19 @@ export class WechatApiClient {
         throw new Error(`Get comment list failed: ${response.data.errmsg} (${response.data.errcode})`);
       }
 
-      return response.data;
+      return {
+        total: response.data.total ?? 0,
+        comment: (response.data.comment ?? []).map((c: any) => ({
+          userCommentId: c.user_comment_id,
+          createTime: c.create_time,
+          content: c.content,
+          commentType: c.comment_type,
+          openid: c.openid ?? null,
+          reply: c.reply
+            ? { content: c.reply.content, createTime: c.reply.create_time }
+            : undefined,
+        })),
+      };
     } catch (error) {
       logger.error('Failed to get comment list:', (error as any)?.message ?? String(error));
       throw error;
@@ -1701,6 +2128,101 @@ export class WechatApiClient {
       return response.data;
     } catch (error) {
       logger.error('Failed to get API quota:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 重置指定接口的调用次数
+   * 与 clearQuota 的重置全部不同，本接口只清空 cgiPath 对应接口的每日调用量
+   */
+  async clearApiQuota(cgiPath: string): Promise<{ errcode: number; errmsg: string }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/openapi/quota/clear', {
+        cgi_path: cgiPath,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Clear API quota failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to clear API quota:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 查询 rid 详情
+   * 用接口报错返回的 rid 定位问题根因
+   */
+  async getRidInfo(rid: string): Promise<{
+    request: {
+      invoke_time: number;
+      cost_in_ms: number;
+      request_url: string;
+      request_body: string;
+      response_body: string;
+    };
+  }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/openapi/rid/get', { rid });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get rid info failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get rid info:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 获取微信 API 服务器 IP 地址
+   * 用于配置开发者服务器出口白名单/排查连通性
+   */
+  async getApiDomainIp(): Promise<{ ip_list: string[] }> {
+    try {
+      const response = await this.httpClient.get('/cgi-bin/get_api_domain_ip');
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Get API domain ip failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to get API domain ip:', (error as any)?.message ?? String(error));
+      throw error;
+    }
+  }
+
+  /**
+   * 转换 openid
+   * 账号迁移/主体变更后，用旧 AppID 的 openid 换新 AppID 的 openid
+   */
+  async changeOpenId(fromAppId: string, openIdList: string[]): Promise<{
+    result_list: Array<{
+      ori_openid: string;
+      new_openid: string;
+      errmsg?: string;
+    }>;
+  }> {
+    try {
+      const response = await this.httpClient.post('/cgi-bin/changeopenid', {
+        from_appid: fromAppId,
+        openid_list: openIdList,
+      });
+
+      if (response.data.errcode && response.data.errcode !== 0) {
+        throw new Error(`Change openid failed: ${response.data.errmsg} (${response.data.errcode})`);
+      }
+
+      return response.data;
+    } catch (error) {
+      logger.error('Failed to change openid:', (error as any)?.message ?? String(error));
       throw error;
     }
   }

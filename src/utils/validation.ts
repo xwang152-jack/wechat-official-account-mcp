@@ -133,18 +133,64 @@ export const mediaIdSchema = z.string()
   .max(128, 'Media ID长度不正确');
 
 /**
+ * 封面裁剪比例
+ * 图文消息（news）仅支持 2.35_1、1_1；图片消息（newspic）额外支持 16_9
+ */
+export const coverRatioSchema = z.enum(['2.35_1', '1_1', '16_9']);
+
+/**
+ * 封面裁剪信息
+ * 以图片左上角(0,0)、右下角(1,1)建立平面坐标系
+ */
+export const coverInfoSchema = z.object({
+  cropPercentList: z.array(z.object({
+    ratio: coverRatioSchema,
+    x1: z.string().optional(),
+    y1: z.string().optional(),
+    x2: z.string().optional(),
+    y2: z.string().optional(),
+  })).optional(),
+});
+
+/**
+ * 图片消息（newspic）图片列表，最多20张，首张即为封面图
+ */
+export const imageInfoSchema = z.object({
+  imageList: z.array(z.object({
+    imageMediaId: mediaIdSchema,
+  }))
+    .min(1, '图片消息至少需要1张图片')
+    .max(20, '图片消息最多20张图片'),
+});
+
+/**
+ * 商品卡片信息（带货），文末插入商品
+ */
+export const productInfoSchema = z.object({
+  footerProductInfo: z.object({
+    productKey: z.string().min(1, '商品key不能为空'),
+  }).optional(),
+});
+
+/**
  * 草稿文章验证 Schema (增强版)
+ * 兼容图文消息（news）与图片消息（newspic）
+ * 注意：news 必须提供 thumbMediaId；newspic 必须提供 imageInfo。跨字段校验在工具层完成。
  */
 export const draftArticleSchema = z.object({
+  articleType: z.enum(['news', 'newspic']).optional(),
   title: articleTitleSchema,
   author: z.string().max(32, '作者名不能超过32个字符').optional(),
-  digest: z.string().max(256, '摘要不能超过256个字符').optional(),
+  digest: z.string().max(120, '摘要不能超过120个字符').optional(),
   content: articleContentSchema,
   contentSourceUrl: urlSchema,
-  thumbMediaId: mediaIdSchema,
+  thumbMediaId: mediaIdSchema.optional(),
   showCoverPic: z.number().int().min(0).max(1).optional(),
   needOpenComment: z.number().int().min(0).max(1).optional(),
   onlyFansCanComment: z.number().int().min(0).max(1).optional(),
+  imageInfo: imageInfoSchema.optional(),
+  coverInfo: coverInfoSchema.optional(),
+  productInfo: productInfoSchema.optional(),
 });
 
 /**

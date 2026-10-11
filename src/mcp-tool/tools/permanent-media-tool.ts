@@ -3,6 +3,7 @@ import { WechatToolResult, McpTool } from '../types.js';
 import { WechatApiClient } from '../../wechat/api-client.js';
 import FormData from 'form-data';
 import { validateFilePath, draftArticleSchema } from '../../utils/validation.js';
+import { jsonResult } from '../json-result.js';
 
 // 永久素材工具参数Schema
 const permanentMediaToolSchema = z.object({
@@ -54,14 +55,15 @@ async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClien
           throw new Error('上传永久图文素材时 articles 不能为空');
         }
 
-        const result = await apiClient.addNews(articles.map((article) => formatNewsArticle(article)) as any);
+        const result = await apiClient.addNews(articles.map((article) => formatNewsArticle(article)));
 
-        return {
-          content: [{
-            type: 'text',
-            text: `永久图文素材创建成功！\n素材ID: ${result.mediaId}\n文章数: ${articles.length}`,
-          }],
-        };
+        return jsonResult({
+          action: 'add',
+          type: 'news',
+          mediaId: result.mediaId,
+          articleCount: articles.length,
+          url: null,
+        });
       }
 
       if (!fileData && !filePath) {
@@ -105,12 +107,13 @@ async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClien
         })()
       ) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `永久素材上传成功！\n素材ID: ${result.media_id}${result.url ? `\n素材URL: ${result.url}` : ''}`,
-        }],
-      };
+      return jsonResult({
+        action: 'add',
+        type,
+        mediaId: result.media_id,
+        url: result.url ?? null,
+        fileName: actualFileName,
+      });
     }
 
     case 'update': {
@@ -134,12 +137,12 @@ async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClien
         articles: formatNewsArticle(articles[0]),
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `永久图文素材更新成功！\n素材ID: ${mediaId}\n更新索引: ${index}`,
-        }],
-      };
+      return jsonResult({
+        action: 'update',
+        mediaId,
+        index,
+        updated: true,
+      });
     }
 
     case 'get': {
@@ -155,30 +158,31 @@ async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClien
 
       // 如果是图文素材，返回详细信息
       if (result.news_item) {
-        const articles = result.news_item.map((item: any, index: number) =>
-          `第${index + 1}篇:\n` +
-          `标题: ${item.title}\n` +
-          `作者: ${item.author || '未设置'}\n` +
-          `摘要: ${item.digest || '无'}\n` +
-          `链接: ${item.url}\n` +
-          `封面图: ${item.thumb_url}\n`
-        ).join('\n');
-
-        return {
-          content: [{
-            type: 'text',
-            text: `获取永久图文素材成功！\n\n${articles}`,
-          }],
-        };
+        return jsonResult({
+          action: 'get',
+          mediaId,
+          type: 'news',
+          createTime: result.create_time ? new Date(result.create_time * 1000).toISOString() : null,
+          url: null,
+          newsItems: result.news_item.map((item: any) => ({
+            title: item.title,
+            author: item.author || null,
+            digest: item.digest || null,
+            url: item.url ?? null,
+            thumbUrl: item.thumb_url ?? null,
+            thumbMediaId: item.thumb_media_id ?? null,
+          })),
+        });
       }
 
       // 如果是其他类型素材，返回基本信息
-      return {
-        content: [{
-          type: 'text',
-          text: `获取永久素材成功！\n素材ID: ${mediaId}\n创建时间: ${new Date(result.create_time * 1000).toLocaleString()}${result.url ? `\n素材URL: ${result.url}` : ''}`,
-        }],
-      };
+      return jsonResult({
+        action: 'get',
+        mediaId,
+        type: result.type ?? null,
+        createTime: result.create_time ? new Date(result.create_time * 1000).toISOString() : null,
+        url: result.url ?? null,
+      });
     }
 
     case 'delete': {
@@ -192,12 +196,11 @@ async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClien
         media_id: deleteMediaId
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `永久素材删除成功！\n素材ID: ${deleteMediaId}`,
-        }],
-      };
+      return jsonResult({
+        action: 'delete',
+        mediaId: deleteMediaId,
+        deleted: true,
+      });
     }
 
     case 'list': {
@@ -215,52 +218,53 @@ async function handlePermanentMediaTool(args: unknown, apiClient: WechatApiClien
 
       if (listType === 'news') {
         // 图文素材列表
-        const newsList = result.item.map((item: any, index: number) => {
-          const articles = item.content.news_item.map((article: any, articleIndex: number) =>
-            `  第${articleIndex + 1}篇: ${article.title}`
-          ).join('\n');
-
-          return `${offset + index + 1}. 素材ID: ${item.media_id}\n` +
-                 `   更新时间: ${new Date(item.update_time * 1000).toLocaleString()}\n` +
-                 `   文章列表:\n${articles}`;
-        }).join('\n\n');
-
-        return {
-          content: [{
-            type: 'text',
-            text: `永久图文素材列表 (${offset + 1}-${offset + result.item.length}/${result.total_count}):\n\n${newsList}`,
-          }],
-        };
+        return jsonResult({
+          action: 'list',
+          type: 'news',
+          total: result.total_count,
+          count: result.item.length,
+          offset,
+          truncated: offset + result.item.length < result.total_count,
+          items: result.item.map((item: any) => ({
+            mediaId: item.media_id,
+            updateTime: item.update_time ? new Date(item.update_time * 1000).toISOString() : null,
+            articles: (item.content?.news_item ?? []).map((article: any) => ({
+              title: article.title,
+              digest: article.digest ?? null,
+              url: article.url ?? null,
+              thumbUrl: article.thumb_url ?? null,
+            })),
+          })),
+        });
       } else {
         // 其他类型素材列表
-        const mediaList = result.item.map((item: any, index: number) =>
-          `${offset + index + 1}. 素材ID: ${item.media_id}\n` +
-          `   文件名: ${item.name}\n` +
-          `   更新时间: ${new Date(item.update_time * 1000).toLocaleString()}${item.url ? `\n   URL: ${item.url}` : ''}`
-        ).join('\n\n');
-
-        return {
-          content: [{
-            type: 'text',
-            text: `永久${listType}素材列表 (${offset + 1}-${offset + result.item.length}/${result.total_count}):\n\n${mediaList}`,
-          }],
-        };
+        return jsonResult({
+          action: 'list',
+          type: listType,
+          total: result.total_count,
+          count: result.item.length,
+          offset,
+          truncated: offset + result.item.length < result.total_count,
+          items: result.item.map((item: any) => ({
+            mediaId: item.media_id,
+            name: item.name ?? null,
+            updateTime: item.update_time ? new Date(item.update_time * 1000).toISOString() : null,
+            url: item.url ?? null,
+          })),
+        });
       }
     }
 
     case 'count': {
       const result = await apiClient.get('/cgi-bin/material/get_materialcount') as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `永久素材统计信息：\n` +
-                `图片素材: ${result.image_count} 个\n` +
-                `语音素材: ${result.voice_count} 个\n` +
-                `视频素材: ${result.video_count} 个\n` +
-                `图文素材: ${result.news_count} 个`,
-        }],
-      };
+      return jsonResult({
+        action: 'count',
+        image: result.image_count,
+        voice: result.voice_count,
+        video: result.video_count,
+        news: result.news_count,
+      });
     }
 
     default:

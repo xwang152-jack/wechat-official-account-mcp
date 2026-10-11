@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpTool } from '../types.js';
 import { WechatApiClient } from '../../wechat/api-client.js';
+import { jsonResult } from '../json-result.js';
 
 const kfAccountToolSchema = z.object({
   action: z.enum(['add', 'update', 'delete', 'get_list']),
@@ -27,48 +28,45 @@ export const kfAccountMcpTool: McpTool = {
           throw new Error('添加客服需要提供 kfAccount 和 nickname');
         }
         await apiClient.addKfAccount(args.kfAccount, args.nickname, args.password || '');
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `客服账号添加成功: ${args.kfAccount} (${args.nickname})`,
-          }],
-        };
+        return jsonResult({
+          action: 'add',
+          kfAccount: args.kfAccount,
+          nickname: args.nickname,
+        });
       }
       case 'update': {
         if (!args.kfAccount || !args.nickname) {
           throw new Error('修改客服需要提供 kfAccount 和 nickname');
         }
         await apiClient.updateKfAccount(args.kfAccount, args.nickname, args.password || '');
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `客服账号修改成功: ${args.kfAccount}`,
-          }],
-        };
+        return jsonResult({
+          action: 'update',
+          kfAccount: args.kfAccount,
+          nickname: args.nickname,
+        });
       }
       case 'delete': {
         if (!args.kfAccount) {
           throw new Error('删除客服需要提供 kfAccount');
         }
         await apiClient.deleteKfAccount(args.kfAccount);
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `客服账号已删除: ${args.kfAccount}`,
-          }],
-        };
+        return jsonResult({
+          action: 'delete',
+          kfAccount: args.kfAccount,
+        });
       }
       case 'get_list': {
         const result = await apiClient.getKfList();
-        const list = result.kf_list.map(kf =>
-          `- ${kf.kf_account} (${kf.kf_nick}, ID: ${kf.kf_id})`
-        ).join('\n');
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `客服账号列表 (共${result.kf_list.length}个)\n\n${list || '暂无客服账号'}`,
-          }],
-        };
+        const kfList = result.kf_list ?? [];
+        return jsonResult({
+          action: 'get_list',
+          count: kfList.length,
+          accounts: kfList.map(kf => ({
+            kfAccount: kf.kf_account,
+            nickname: kf.kf_nick,
+            kfId: kf.kf_id,
+          })),
+        });
       }
       default:
         throw new Error(`不支持的操作: ${args.action}`);

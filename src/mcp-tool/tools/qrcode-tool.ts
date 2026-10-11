@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpTool } from '../types.js';
 import { WechatApiClient } from '../../wechat/api-client.js';
+import { jsonResult } from '../json-result.js';
 
 const qrcodeToolSchema = z.object({
   action: z.enum(['create_temp', 'create_permanent', 'get_url']),
@@ -35,12 +36,15 @@ export const qrcodeMcpTool: McpTool = {
         sceneStr: args.sceneStr,
       });
       const imageUrl = apiClient.getQrCodeUrl(result.ticket);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `临时二维码创建成功\n\nTicket: ${result.ticket}\n有效期: ${result.expireSeconds}秒\n二维码URL: ${result.url}\n图片URL: ${imageUrl}`,
-        }],
-      };
+      return jsonResult({
+        action: 'create_temp',
+        ticket: result.ticket,
+        expireSeconds: result.expireSeconds ?? null,
+        url: result.url ?? null,
+        imageUrl,
+        sceneId: args.sceneId ?? null,
+        sceneStr: args.sceneStr ?? null,
+      });
     }
 
     if (args.action === 'create_permanent') {
@@ -54,12 +58,14 @@ export const qrcodeMcpTool: McpTool = {
         sceneStr: args.sceneStr,
       });
       const imageUrl = apiClient.getQrCodeUrl(result.ticket);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `永久二维码创建成功\n\nTicket: ${result.ticket}\n二维码URL: ${result.url}\n图片URL: ${imageUrl}`,
-        }],
-      };
+      return jsonResult({
+        action: 'create_permanent',
+        ticket: result.ticket,
+        url: result.url ?? null,
+        imageUrl,
+        sceneId: args.sceneId ?? null,
+        sceneStr: args.sceneStr ?? null,
+      });
     }
 
     if (args.action === 'get_url') {
@@ -67,12 +73,11 @@ export const qrcodeMcpTool: McpTool = {
         throw new Error('获取二维码图片需要提供 ticket 参数');
       }
       const imageUrl = apiClient.getQrCodeUrl(args.ticket);
-      return {
-        content: [{
-          type: 'text' as const,
-          text: `二维码图片URL: ${imageUrl}`,
-        }],
-      };
+      return jsonResult({
+        action: 'get_url',
+        ticket: args.ticket,
+        imageUrl,
+      });
     }
 
     throw new Error(`不支持的操作: ${args.action}`);

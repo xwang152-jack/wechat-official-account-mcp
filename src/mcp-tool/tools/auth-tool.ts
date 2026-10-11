@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { WechatToolDefinition, WechatToolContext, WechatToolResult, McpTool, WechatApiClient } from '../types.js';
 import { AuthManager } from '../../auth/auth-manager.js';
 import { appIdSchema, appSecretSchema } from '../../utils/validation.js';
+import { jsonResult } from '../json-result.js';
 
 // 认证工具参数 Schema
 const authToolSchema = z.object({
@@ -11,16 +12,6 @@ const authToolSchema = z.object({
   token: z.string().max(128, 'Token长度不能超过128个字符').optional(),
   encodingAESKey: z.string().length(43, 'EncodingAESKey必须为43个字符').optional(),
 });
-
-/**
- * Token 脱敏辅助函数
- */
-function maskToken(accessToken: string): string {
-  if (accessToken.length <= 12) {
-    return `${accessToken.substring(0, 4)}...`;
-  }
-  return `${accessToken.substring(0, 8)}...${accessToken.substring(accessToken.length - 4)}`;
-}
 
 /**
  * 认证工具核心处理逻辑
@@ -42,55 +33,61 @@ async function handleAuthCore(args: unknown, authManager: AuthManager): Promise<
         encodingAESKey,
       });
 
-      return {
-        content: [{
-          type: 'text',
-          text: `微信公众号配置已成功保存\n- AppID: ${appId}\n- Token: ${token || '未设置'}\n- EncodingAESKey: ${encodingAESKey || '未设置'}`,
-        }],
-      };
+      return jsonResult({
+        action: 'configure',
+        configured: true,
+        appId,
+        hasToken: Boolean(token),
+        hasEncodingAESKey: Boolean(encodingAESKey),
+      });
     }
 
     case 'get_token': {
       const tokenInfo = await authManager.getAccessToken();
       const expiresIn = Math.max(0, Math.floor((tokenInfo.expiresAt - Date.now()) / 1000));
 
-      return {
-        content: [{
-          type: 'text',
-          text: `Access Token 信息:\n- Token: ${maskToken(tokenInfo.accessToken)}\n- 剩余有效时间: ${expiresIn} 秒\n- 过期时间: ${new Date(tokenInfo.expiresAt).toLocaleString()}`,
-        }],
-      };
+      return jsonResult({
+        action: 'get_token',
+        expiresIn,
+        expiresAt: tokenInfo.expiresAt,
+        expiresAtIso: new Date(tokenInfo.expiresAt).toISOString(),
+      });
     }
 
     case 'refresh_token': {
       const tokenInfo = await authManager.refreshAccessToken();
       const expiresIn = Math.max(0, Math.floor((tokenInfo.expiresAt - Date.now()) / 1000));
 
-      return {
-        content: [{
-          type: 'text',
-          text: `Access Token 已刷新:\n- 新 Token: ${maskToken(tokenInfo.accessToken)}\n- 有效时间: ${expiresIn} 秒\n- 过期时间: ${new Date(tokenInfo.expiresAt).toLocaleString()}`,
-        }],
-      };
+      return jsonResult({
+        action: 'refresh_token',
+        refreshed: true,
+        expiresIn,
+        expiresAt: tokenInfo.expiresAt,
+        expiresAtIso: new Date(tokenInfo.expiresAt).toISOString(),
+      });
     }
 
     case 'get_config': {
       const config = await authManager.getConfig();
       if (!config) {
-        return {
-          content: [{
-            type: 'text',
-            text: '尚未配置微信公众号信息，请先使用 configure 操作进行配置。',
-          }],
-        };
+        return jsonResult({
+          action: 'get_config',
+          configured: false,
+          appId: null,
+          hasAppSecret: false,
+          hasToken: false,
+          hasEncodingAESKey: false,
+        });
       }
 
-      return {
-        content: [{
-          type: 'text',
-          text: `当前微信公众号配置:\n- AppID: ${config.appId}\n- AppSecret: ***\n- Token: ${config.token || '未设置'}\n- EncodingAESKey: ${config.encodingAESKey || '未设置'}`,
-        }],
-      };
+      return jsonResult({
+        action: 'get_config',
+        configured: true,
+        appId: config.appId,
+        hasAppSecret: Boolean(config.appSecret),
+        hasToken: Boolean(config.token),
+        hasEncodingAESKey: Boolean(config.encodingAESKey),
+      });
     }
 
     default:

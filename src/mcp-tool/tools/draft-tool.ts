@@ -1,6 +1,7 @@
 import { WechatToolDefinition, McpTool, WechatApiClient, WechatToolContext, WechatToolResult } from '../types.js';
 import { z } from 'zod';
 import { draftArticleSchema, mediaIdSchema } from '../../utils/validation.js';
+import { jsonResult } from '../json-result.js';
 
 // 草稿工具参数 Schema
 const draftToolSchema = z.object({
@@ -12,18 +13,73 @@ const draftToolSchema = z.object({
   count: z.number().int().min(1).max(20).optional(),
 });
 
+/**
+ * 跨字段校验：news 必须有封面图，newspic 必须有图片列表
+ */
+function assertArticleShape(article: any) {
+  const articleType = article.articleType || 'news';
+
+  if (articleType === 'newspic') {
+    if (!article.imageInfo?.imageList?.length) {
+      throw new Error('图片消息（articleType: newspic）必须提供 imageInfo.imageList（最多20张，首张为封面）');
+    }
+    return;
+  }
+
+  if (!article.thumbMediaId) {
+    throw new Error('图文消息（articleType: news）必须提供 thumbMediaId 作为封面图素材ID');
+  }
+}
+
+/**
+ * 将工具层驼峰参数映射为微信接口的下划线字段
+ */
 function formatDraftArticle(article: any) {
-  return {
+  const formatted: Record<string, any> = {
+    article_type: article.articleType || 'news',
     title: article.title,
     author: article.author || '',
     digest: article.digest || '',
     content: article.content,
     content_source_url: article.contentSourceUrl || '',
-    thumb_media_id: article.thumbMediaId,
     show_cover_pic: article.showCoverPic || 0,
     need_open_comment: article.needOpenComment || 0,
     only_fans_can_comment: article.onlyFansCanComment || 0,
   };
+
+  if (article.thumbMediaId) {
+    formatted.thumb_media_id = article.thumbMediaId;
+  }
+
+  if (article.imageInfo?.imageList?.length) {
+    formatted.image_info = {
+      image_list: article.imageInfo.imageList.map((img: any) => ({
+        image_media_id: img.imageMediaId,
+      })),
+    };
+  }
+
+  if (article.coverInfo?.cropPercentList?.length) {
+    formatted.cover_info = {
+      crop_percent_list: article.coverInfo.cropPercentList.map((crop: any) => ({
+        ratio: crop.ratio,
+        x1: crop.x1,
+        y1: crop.y1,
+        x2: crop.x2,
+        y2: crop.y2,
+      })),
+    };
+  }
+
+  if (article.productInfo?.footerProductInfo?.productKey) {
+    formatted.product_info = {
+      footer_product_info: {
+        product_key: article.productInfo.footerProductInfo.productKey,
+      },
+    };
+  }
+
+  return formatted;
 }
 
 /**
@@ -49,16 +105,17 @@ async function handleDraftOperations(
         throw new Error('文章内容不能为空');
       }
 
+      articles.forEach(assertArticleShape);
+
       const result = await apiClient.post('/cgi-bin/draft/add', {
         articles: articles.map((article: any) => formatDraftArticle(article))
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `草稿创建成功！\n草稿ID: ${result.media_id}\n包含文章数: ${articles.length}`,
-        }],
-      };
+      return jsonResult({
+        action: 'add',
+        mediaId: result.media_id,
+        articleCount: articles.length,
+      });
     }
 
     case 'update': {
@@ -76,18 +133,20 @@ async function handleDraftOperations(
         throw new Error('更新草稿时必须提供且仅提供一篇文章内容');
       }
 
+      assertArticleShape(articles[0]);
+
       await apiClient.post('/cgi-bin/draft/update', {
         media_id: mediaId,
         index,
         articles: formatDraftArticle(articles[0]),
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `草稿更新成功！\n草稿ID: ${mediaId}\n更新索引: ${index}`,
-        }],
-      };
+      return jsonResult({
+        action: 'update',
+        mediaId,
+        index,
+        articleCount: 1,
+      });
     }
 
     case 'get': {
@@ -101,23 +160,27 @@ async function handleDraftOperations(
         media_id: mediaId
       }) as any;
 
-      const articles = result.news_item.map((item: any, index: number) =>
-        `第${index + 1}篇:\n` +
-        `标题: ${item.title}\n` +
-        `作者: ${item.author || '未设置'}\n` +
-        `摘要: ${item.digest || '无'}\n` +
-        `内容: ${item.content.substring(0, 100)}${item.content.length > 100 ? '...' : ''}\n` +
-        `原文链接: ${item.content_source_url || '无'}\n` +
-        `封面图ID: ${item.thumb_media_id}\n` +
-        `显示封面: ${item.show_cover_pic ? '是' : '否'}\n`
-      ).join('\n');
+      const articles = result.news_item.map((item: any, index: number) => ({
+        index,
+        title: item.title ?? null,
+        author: item.author || null,
+        digest: item.digest || null,
+        content: item.content ?? null,
+        contentSourceUrl: item.content_source_url || null,
+        thumbMediaId: item.thumb_media_id ?? null,
+        showCoverPic: item.show_cover_pic ?? null,
+        articleType: item.article_type ?? null,
+        imageInfo: item.image_info ?? null,
+      }));
 
-      return {
-        content: [{
-          type: 'text',
-          text: `获取草稿成功！\n草稿ID: ${mediaId}\n创建时间: ${new Date(result.create_time * 1000).toLocaleString()}\n更新时间: ${new Date(result.update_time * 1000).toLocaleString()}\n\n${articles}`,
-        }],
-      };
+      return jsonResult({
+        action: 'get',
+        mediaId,
+        createTime: result.create_time ? new Date(result.create_time * 1000).toISOString() : null,
+        updateTime: result.update_time ? new Date(result.update_time * 1000).toISOString() : null,
+        articleCount: articles.length,
+        articles,
+      });
     }
 
     case 'delete': {
@@ -131,12 +194,11 @@ async function handleDraftOperations(
         media_id: mediaId
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `草稿删除成功！\n草稿ID: ${mediaId}`,
-        }],
-      };
+      return jsonResult({
+        action: 'delete',
+        mediaId,
+        deleted: true,
+      });
     }
 
     case 'list': {
@@ -147,34 +209,37 @@ async function handleDraftOperations(
         count
       }) as any;
 
-      const draftList = result.item.map((item: any, index: number) => {
-        const firstArticle = item.content.news_item[0];
-        const articleCount = item.content.news_item.length;
+      const items = result.item.map((item: any) => {
+        const newsItems: any[] = item.content.news_item;
+        const firstArticle = newsItems[0];
 
-        return `${offset + index + 1}. 草稿ID: ${item.media_id}\n` +
-               `   标题: ${firstArticle.title}${articleCount > 1 ? ` (共${articleCount}篇)` : ''}\n` +
-               `   作者: ${firstArticle.author || '未设置'}\n` +
-               `   创建时间: ${new Date(item.content.create_time * 1000).toLocaleString()}\n` +
-               `   更新时间: ${new Date(item.content.update_time * 1000).toLocaleString()}`;
-      }).join('\n\n');
+        return {
+          mediaId: item.media_id,
+          title: firstArticle.title ?? null,
+          author: firstArticle.author || null,
+          articleCount: newsItems.length,
+          createTime: item.content.create_time ? new Date(item.content.create_time * 1000).toISOString() : null,
+          updateTime: item.content.update_time ? new Date(item.content.update_time * 1000).toISOString() : null,
+        };
+      });
 
-      return {
-        content: [{
-          type: 'text',
-          text: `草稿列表 (${offset + 1}-${offset + result.item.length}/${result.total_count}):\n\n${draftList}`,
-        }],
-      };
+      return jsonResult({
+        action: 'list',
+        offset,
+        count: items.length,
+        total: result.total_count ?? null,
+        truncated: typeof result.total_count === 'number' ? result.total_count > offset + items.length : false,
+        items,
+      });
     }
 
     case 'count': {
       const result = await apiClient.post('/cgi-bin/draft/count') as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `草稿统计信息：\n草稿总数: ${result.total_count} 个`,
-        }],
-      };
+      return jsonResult({
+        action: 'count',
+        totalCount: result.total_count ?? null,
+      });
     }
 
     default:
@@ -236,22 +301,16 @@ export const draftTool: WechatToolDefinition = {
  */
 export const draftMcpTool: McpTool = {
   name: 'wechat_draft',
-  description: '管理微信公众号草稿',
+  description: '管理微信公众号草稿。支持图文消息（news）与图片消息（newspic），图片消息可挂商品卡片。',
   inputSchema: {
     action: z.enum(['add', 'update', 'get', 'delete', 'list', 'count']).describe('操作类型：add(创建), update(更新), get(获取), delete(删除), list(列表), count(统计)'),
     mediaId: z.string().optional().describe('草稿 Media ID（get、update、delete 时必需）'),
     index: z.number().int().min(0).optional().describe('草稿中的文章索引（update 时必需）'),
-    articles: z.array(z.object({
-      title: z.string().describe('文章标题'),
-      author: z.string().optional().describe('作者'),
-      digest: z.string().optional().describe('摘要'),
-      content: z.string().describe('文章内容'),
-      contentSourceUrl: z.string().optional().describe('原文链接'),
-      thumbMediaId: z.string().describe('封面图片媒体ID'),
-      showCoverPic: z.number().optional().describe('是否显示封面图片'),
-      needOpenComment: z.number().optional().describe('是否开启评论'),
-      onlyFansCanComment: z.number().optional().describe('是否仅粉丝可评论'),
-    })).optional().describe('文章列表（add 时可传多篇，update 时必须且仅能传一篇）'),
+    articles: z.array(draftArticleSchema).optional().describe(
+      '文章列表（add 时可传多篇，update 时必须且仅能传一篇）。' +
+      'articleType 省略时为 news，需提供 thumbMediaId；传 newspic 时需提供 imageInfo.imageList。' +
+      'coverInfo 控制封面裁剪，productInfo.footerProductInfo.productKey 在文末挂商品卡片。'
+    ),
     offset: z.number().optional().describe('偏移量（列表时使用）'),
     count: z.number().optional().describe('数量（列表时使用）'),
   },

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const templateIdSchema = z.string().min(1, '模板ID不能为空');
@@ -66,15 +67,15 @@ export const subscribeMsgMcpTool: McpTool = {
           data: data.data as Record<string, { value: string }>,
         });
 
-        return {
-          content: [{
-            type: 'text',
-            text: `订阅通知发送成功\n` +
-                  `- 接收者: ${validated.toUser}\n` +
-                  `- 模板ID: ${validated.templateId}\n` +
-                  `- 消息ID: ${result.msgid}`
-          }]
-        };
+        return jsonResult({
+          action: 'send',
+          msgId: result.msgid ?? null,
+          toUser: validated.toUser,
+          templateId: validated.templateId,
+          page: validated.page ?? null,
+          miniProgramAppId: validated.miniProgramAppId ?? null,
+          miniProgramPagePath: validated.miniProgramPagePath ?? null
+        });
       }
 
       default:

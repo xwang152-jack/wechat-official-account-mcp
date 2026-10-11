@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const templateIdSchema = z.string().min(1, '模板ID不能为空');
@@ -7,7 +8,10 @@ const openIdSchema = z.string().min(1, 'OpenID不能为空');
 
 export const templateMsgMcpTool: McpTool = {
   name: 'wechat_template_msg',
-  description: '微信公众号模板消息 - 发送模板消息、管理模板、设置行业、获取行业信息',
+  description:
+    '微信公众号模板消息 - 发送模板消息、管理模板、设置行业、获取行业信息。' +
+    '注意：仅认证号可用，且模板类目需与账号所属行业匹配；发送频次受限（高活跃用户每周≤5条，沉睡用户每月≤1条），' +
+    '营销词汇占比过高会被驳回。',
   inputSchema: {
     action: z.enum([
       'send',
@@ -52,15 +56,13 @@ export const templateMsgMcpTool: McpTool = {
           data: validated.data as Record<string, { value: string; color?: string }>
         });
 
-        return {
-          content: [{
-            type: 'text',
-            text: `模板消息发送成功\n` +
-                  `- 接收者: ${validated.toUser}\n` +
-                  `- 模板ID: ${validated.templateId}\n` +
-                  `- 消息ID: ${result.msgid}`
-          }]
-        };
+        return jsonResult({
+          action: 'send',
+          sent: true,
+          msgId: result.msgid ?? null,
+          toUser: validated.toUser,
+          templateId: validated.templateId,
+        });
       }
 
       case 'set_industry': {
@@ -73,14 +75,11 @@ export const templateMsgMcpTool: McpTool = {
           industry_id2: validated.industryId2,
         });
 
-        return {
-          content: [{
-            type: 'text',
-            text: `模板消息所属行业设置成功\n` +
-                  `- 主行业ID: ${validated.industryId1}\n` +
-                  `- 副行业ID: ${validated.industryId2}`
-          }]
-        };
+        return jsonResult({
+          action: 'set_industry',
+          industryId1: validated.industryId1,
+          industryId2: validated.industryId2,
+        });
       }
 
       case 'add_template': {
@@ -92,31 +91,28 @@ export const templateMsgMcpTool: McpTool = {
           template_id_short: validated.templateShortId,
         }) as { template_id: string };
 
-        return {
-          content: [{
-            type: 'text',
-            text: `模板添加成功\n` +
-                  `- 模板库编号: ${validated.templateShortId}\n` +
-                  `- 模板ID: ${result.template_id}`
-          }]
-        };
+        return jsonResult({
+          action: 'add_template',
+          templateId: result.template_id ?? null,
+          templateShortId: validated.templateShortId,
+        });
       }
 
       case 'get_all_templates': {
         const result = await apiClient.getAllPrivateTemplates();
-        const templates = result.template_list.map((tpl, index) =>
-          `${index + 1}. ${tpl.title}\n` +
-          `   模板ID: ${tpl.templateId}\n` +
-          `   内容: ${tpl.content}\n` +
-          `   示例: ${tpl.example}\n`
-        ).join('\n');
+        const templateList = result.template_list ?? [];
 
-        return {
-          content: [{
-            type: 'text',
-            text: `模板列表 (共 ${result.template_list.length} 个):\n${templates}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_all_templates',
+          total: templateList.length,
+          count: templateList.length,
+          templates: templateList.map((tpl) => ({
+            templateId: tpl.templateId,
+            title: tpl.title,
+            content: tpl.content,
+            example: tpl.example,
+          })),
+        });
       }
 
       case 'delete': {
@@ -125,24 +121,26 @@ export const templateMsgMcpTool: McpTool = {
         }
 
         await apiClient.deletePrivateTemplate(validated.templateId);
-        return {
-          content: [{
-            type: 'text',
-            text: `模板删除成功\n- 模板ID: ${validated.templateId}`
-          }]
-        };
+        return jsonResult({
+          action: 'delete',
+          templateId: validated.templateId,
+          deleted: true,
+        });
       }
 
       case 'get_industry': {
         const result = await apiClient.getTemplateIndustry();
-        return {
-          content: [{
-            type: 'text',
-            text: `账号所属行业:\n` +
-                  `- 主行业: ${result.primary_industry.firstClass} - ${result.primary_industry.secondClass}\n` +
-                  `- 副行业: ${result.secondary_industry.firstClass} - ${result.secondary_industry.secondClass}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_industry',
+          primaryIndustry: {
+            firstClass: result.primary_industry?.firstClass ?? null,
+            secondClass: result.primary_industry?.secondClass ?? null,
+          },
+          secondaryIndustry: {
+            firstClass: result.secondary_industry?.firstClass ?? null,
+            secondClass: result.secondary_industry?.secondClass ?? null,
+          },
+        });
       }
 
       default:

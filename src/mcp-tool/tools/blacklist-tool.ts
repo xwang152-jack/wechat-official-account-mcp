@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpTool } from '../types.js';
 import { WechatApiClient } from '../../wechat/api-client.js';
+import { jsonResult } from '../json-result.js';
 
 const blacklistToolSchema = z.object({
   action: z.enum(['get_list', 'block', 'unblock']),
@@ -22,36 +23,35 @@ export const blacklistMcpTool: McpTool = {
     switch (args.action) {
       case 'get_list': {
         const result = await apiClient.getBlackList(args.beginOpenId);
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `黑名单列表\n\n总数: ${result.total}\n本页: ${result.count}\n${result.data.openid.map(id => `- ${id}`).join('\n')}\n\n下一页起始: ${result.next_openid}`,
-          }],
-        };
+        return jsonResult({
+          action: 'get_list',
+          total: result.total,
+          count: result.count,
+          openids: result.data?.openid ?? [],
+          nextOpenid: result.next_openid || null,
+        });
       }
       case 'block': {
         if (!args.openIdList || args.openIdList.length === 0) {
           throw new Error('拉黑用户需要提供 openIdList');
         }
         await apiClient.batchBlackList(args.openIdList);
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `已将 ${args.openIdList.length} 个用户加入黑名单`,
-          }],
-        };
+        return jsonResult({
+          action: 'block',
+          blocked: args.openIdList.length,
+          openids: args.openIdList,
+        });
       }
       case 'unblock': {
         if (!args.openIdList || args.openIdList.length === 0) {
           throw new Error('取消拉黑需要提供 openIdList');
         }
         await apiClient.batchUnBlackList(args.openIdList);
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `已将 ${args.openIdList.length} 个用户移出黑名单`,
-          }],
-        };
+        return jsonResult({
+          action: 'unblock',
+          unblocked: args.openIdList.length,
+          openids: args.openIdList,
+        });
       }
       default:
         throw new Error(`不支持的操作: ${args.action}`);

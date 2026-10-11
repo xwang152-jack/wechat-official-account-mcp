@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { WechatToolDefinition, WechatToolContext, WechatToolResult, McpTool, WechatApiClient } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 发布工具参数 Schema
 const publishToolSchema = z.object({
@@ -10,13 +11,17 @@ const publishToolSchema = z.object({
   count: z.number().optional(),
 });
 
-// 发布状态映射（模块级常量）
+/**
+ * 发布状态映射（官方 freepublish/get：publish_status）
+ */
 const PUBLISH_STATUS_MAP: Record<number, string> = {
   0: '成功',
-  1: '发布失败',
-  2: '发布成功',
-  3: '发布中',
-  4: '原创失败'
+  1: '发布中',
+  2: '原创失败',
+  3: '常规失败',
+  4: '平台审核不通过',
+  5: '成功后用户删除所有文章',
+  6: '成功后系统封禁所有文章',
 };
 
 /**
@@ -44,12 +49,11 @@ async function handlePublishCore(
         media_id: mediaId
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `发布提交成功！\n发布ID: ${result.publish_id}\n草稿ID: ${mediaId}\n\n注意：发布结果将通过事件推送通知，请关注推送消息。`,
-        }],
-      };
+      return jsonResult({
+        action: 'submit',
+        publishId: result.publish_id ?? null,
+        mediaId,
+      });
     }
 
     case 'get': {
@@ -63,22 +67,22 @@ async function handlePublishCore(
         publish_id: publishId
       }) as any;
 
-      const firstArticle = result.article_detail.item[0];
-      const articleCount = result.article_detail.count;
+      // article_detail 仅在发布成功（publish_status=0）时返回
+      const items: any[] = result.article_detail?.item || [];
 
-      return {
-        content: [{
-          type: 'text',
-          text: `发布状态查询成功！\n` +
-                `发布ID: ${publishId}\n` +
-                `发布状态: ${PUBLISH_STATUS_MAP[result.publish_status] || '未知状态'}\n` +
-                `文章数量: ${articleCount}\n` +
-                `首篇标题: ${firstArticle.title}\n` +
-                `作者: ${firstArticle.author || '未设置'}\n` +
-                `文章链接: ${firstArticle.url || '暂无'}\n` +
-                `发布时间: ${result.article_detail.create_time ? new Date(result.article_detail.create_time * 1000).toLocaleString() : '未发布'}`,
-        }],
-      };
+      return jsonResult({
+        action: 'get',
+        publishId,
+        publishStatus: result.publish_status ?? null,
+        publishStatusText: PUBLISH_STATUS_MAP[result.publish_status] ?? null,
+        articleId: result.article_id || null,
+        articleCount: result.article_detail?.count ?? 0,
+        articles: items.map((item: any) => ({
+          idx: item.idx ?? null,
+          articleUrl: item.article_url || null,
+        })),
+        failIdx: result.fail_idx ?? [],
+      });
     }
 
     case 'delete': {
@@ -92,12 +96,11 @@ async function handlePublishCore(
         publish_id: deletePublishId
       }) as any;
 
-      return {
-        content: [{
-          type: 'text',
-          text: `发布删除成功！\n发布ID: ${deletePublishId}\n\n注意：删除发布不会删除草稿，如需删除草稿请使用草稿管理工具。`,
-        }],
-      };
+      return jsonResult({
+        action: 'delete',
+        publishId: deletePublishId,
+        deleted: true,
+      });
     }
 
     case 'list': {
@@ -108,24 +111,31 @@ async function handlePublishCore(
         count
       }) as any;
 
-      const publishList = result.item.map((item: any, index: number) => {
-        const firstArticle = item.article_detail.item[0];
-        const articleCount = item.article_detail.count;
+      // batchget 返回的是已成功发布的内容，不含 publish_status 字段
+      const items = (result.item || []).map((item: any) => {
+        const newsItems: any[] = item.content?.news_item || [];
+        const firstArticle = newsItems[0] || {};
 
-        return `${offset + index + 1}. 发布ID: ${item.publish_id}\n` +
-               `   状态: ${PUBLISH_STATUS_MAP[item.publish_status] || '未知状态'}\n` +
-               `   标题: ${firstArticle.title}${articleCount > 1 ? ` (共${articleCount}篇)` : ''}\n` +
-               `   作者: ${firstArticle.author || '未设置'}\n` +
-               `   发布时间: ${item.article_detail.create_time ? new Date(item.article_detail.create_time * 1000).toLocaleString() : '未发布'}\n` +
-               `   文章链接: ${firstArticle.url || '暂无'}`;
-      }).join('\n\n');
+        return {
+          articleId: item.article_id ?? null,
+          title: firstArticle.title || null,
+          author: firstArticle.author || null,
+          articleCount: newsItems.length,
+          deleted: firstArticle.is_deleted ?? null,
+          url: firstArticle.url || null,
+          updateTime: item.update_time ? new Date(item.update_time * 1000).toISOString() : null,
+        };
+      });
 
-      return {
-        content: [{
-          type: 'text',
-          text: `发布列表 (${offset + 1}-${offset + result.item.length}/${result.total_count}):\n\n${publishList}`,
-        }],
-      };
+      return jsonResult({
+        action: 'list',
+        offset,
+        count: items.length,
+        itemCount: result.item_count ?? null,
+        total: result.total_count ?? null,
+        truncated: typeof result.total_count === 'number' ? result.total_count > offset + items.length : false,
+        items,
+      });
     }
 
     default:
@@ -187,13 +197,15 @@ export const publishTool: WechatToolDefinition = {
  */
 export const publishMcpTool: McpTool = {
   name: 'wechat_publish',
-  description: '管理微信公众号文章发布',
+  description:
+    '管理微信公众号文章发布（freepublish）。注意：自 2025 年 7 月起，个人主体、企业未认证主体已被回收发布接口权限，' +
+    '公众号（原订阅号）需完成微信认证方可调用，服务号可直接调用。',
   inputSchema: {
     action: z.enum(['submit', 'get', 'delete', 'list']).describe('操作类型：submit(提交发布), get(查询状态), delete(删除发布), list(发布列表)'),
     mediaId: z.string().optional().describe('草稿 Media ID（提交发布时必需）'),
     publishId: z.string().optional().describe('发布 ID（查询状态、删除时必需）'),
     offset: z.number().optional().describe('偏移量（列表时使用）'),
-    count: z.number().optional().describe('数量（列表时使用）'),
+    count: z.number().optional().describe('数量（列表时使用，1-20）'),
   },
   handler: handlePublishMcpTool,
 };

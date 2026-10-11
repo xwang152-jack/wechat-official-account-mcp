@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { McpTool } from '../types.js';
 import { WechatApiClient } from '../../wechat/api-client.js';
+import { jsonResult } from '../json-result.js';
 
 const commentToolSchema = z.object({
   action: z.enum(['open', 'close', 'list', 'mark_elect', 'unmark_elect', 'delete', 'reply', 'delete_reply']),
@@ -35,11 +36,11 @@ export const commentMcpTool: McpTool = {
     switch (args.action) {
       case 'open': {
         await apiClient.openComment(args.msgDataId, idx);
-        return { content: [{ type: 'text' as const, text: '评论已打开' }] };
+        return jsonResult({ action: 'open', msgDataId: args.msgDataId, index: idx });
       }
       case 'close': {
         await apiClient.closeComment(args.msgDataId, idx);
-        return { content: [{ type: 'text' as const, text: '评论已关闭' }] };
+        return jsonResult({ action: 'close', msgDataId: args.msgDataId, index: idx });
       }
       case 'list': {
         const result = await apiClient.getCommentList(
@@ -48,42 +49,50 @@ export const commentMcpTool: McpTool = {
           args.count ?? 50,
           args.type ?? 0,
         );
-        const comments = result.comment.map(c =>
-          `[${c.userCommentId}] ${c.content} (类型:${c.commentType}, 时间:${new Date(c.createTime * 1000).toLocaleString()})${c.reply ? `\n  回复: ${c.reply.content}` : ''}`
-        ).join('\n');
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `评论列表 (共${result.total}条)\n\n${comments || '暂无评论'}`,
-          }],
-        };
+        const comments = result.comment.map(c => ({
+          userCommentId: c.userCommentId,
+          content: c.content,
+          commentType: c.commentType,
+          openid: c.openid ?? null,
+          createTime: c.createTime,
+          reply: c.reply ? { content: c.reply.content, createTime: c.reply.createTime } : null,
+        }));
+        return jsonResult({
+          action: 'list',
+          msgDataId: args.msgDataId,
+          index: idx,
+          total: result.total,
+          count: comments.length,
+          begin: args.begin ?? 0,
+          comments,
+        });
       }
       case 'mark_elect': {
         if (!args.userCommentId) throw new Error('精选评论需要提供 userCommentId');
         await apiClient.markElectComment(args.msgDataId, idx, args.userCommentId);
-        return { content: [{ type: 'text' as const, text: '评论已标记为精选' }] };
+        return jsonResult({ action: 'mark_elect', msgDataId: args.msgDataId, index: idx, userCommentId: args.userCommentId });
       }
       case 'unmark_elect': {
         if (!args.userCommentId) throw new Error('取消精选需要提供 userCommentId');
         await apiClient.unmarkElectComment(args.msgDataId, idx, args.userCommentId);
-        return { content: [{ type: 'text' as const, text: '已取消精选标记' }] };
+        return jsonResult({ action: 'unmark_elect', msgDataId: args.msgDataId, index: idx, userCommentId: args.userCommentId });
       }
       case 'delete': {
         if (!args.userCommentId) throw new Error('删除评论需要提供 userCommentId');
         await apiClient.deleteComment(args.msgDataId, idx, args.userCommentId);
-        return { content: [{ type: 'text' as const, text: '评论已删除' }] };
+        return jsonResult({ action: 'delete', msgDataId: args.msgDataId, index: idx, userCommentId: args.userCommentId });
       }
       case 'reply': {
         if (!args.userCommentId) throw new Error('回复评论需要提供 userCommentId');
         if (!args.content) throw new Error('回复评论需要提供 content');
         await apiClient.replyComment(args.msgDataId, idx, args.userCommentId, args.content);
-        return { content: [{ type: 'text' as const, text: '评论回复成功' }] };
+        return jsonResult({ action: 'reply', msgDataId: args.msgDataId, index: idx, userCommentId: args.userCommentId, content: args.content });
       }
       case 'delete_reply': {
         if (!args.userCommentId) throw new Error('删除回复需要提供 userCommentId');
         if (!args.replyId) throw new Error('删除回复需要提供 replyId');
         await apiClient.deleteCommentReply(args.msgDataId, idx, args.userCommentId, args.replyId);
-        return { content: [{ type: 'text' as const, text: '评论回复已删除' }] };
+        return jsonResult({ action: 'delete_reply', msgDataId: args.msgDataId, index: idx, userCommentId: args.userCommentId, replyId: args.replyId });
       }
       default:
         throw new Error(`不支持的操作: ${args.action}`);

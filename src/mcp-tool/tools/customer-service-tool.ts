@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const openIdSchema = z.string().min(1, 'OpenID不能为空');
@@ -51,12 +52,12 @@ export const customerServiceMcpTool: McpTool = {
             text: { content: validated.content }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `文本客服消息发送成功\n- 接收者: ${validated.toUser}\n- 内容: ${validated.content}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_text',
+            toUser: validated.toUser,
+            msgType: 'text',
+            content: validated.content
+          });
         }
 
         case 'send_image': {
@@ -73,12 +74,12 @@ export const customerServiceMcpTool: McpTool = {
             image: { mediaId: validated.mediaId }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `图片客服消息发送成功\n- 接收者: ${validated.toUser}\n- MediaID: ${validated.mediaId}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_image',
+            toUser: validated.toUser,
+            msgType: 'image',
+            mediaId: validated.mediaId
+          });
         }
 
         case 'send_voice': {
@@ -95,12 +96,12 @@ export const customerServiceMcpTool: McpTool = {
             voice: { mediaId: validated.mediaId }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `语音客服消息发送成功\n- 接收者: ${validated.toUser}\n- MediaID: ${validated.mediaId}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_voice',
+            toUser: validated.toUser,
+            msgType: 'voice',
+            mediaId: validated.mediaId
+          });
         }
 
         case 'send_video': {
@@ -125,12 +126,15 @@ export const customerServiceMcpTool: McpTool = {
             }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `视频客服消息发送成功\n- 接收者: ${validated.toUser}\n- MediaID: ${validated.mediaId}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_video',
+            toUser: validated.toUser,
+            msgType: 'video',
+            mediaId: validated.mediaId,
+            thumbMediaId: validated.thumbMediaId,
+            title: validated.title ?? null,
+            description: validated.description ?? null
+          });
         }
 
         case 'send_music': {
@@ -153,12 +157,16 @@ export const customerServiceMcpTool: McpTool = {
             }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `音乐客服消息发送成功\n- 接收者: ${validated.toUser}\n- 标题: ${validated.title || '无'}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_music',
+            toUser: validated.toUser,
+            msgType: 'music',
+            musicUrl: validated.musicUrl,
+            hqMusicUrl: validated.hqMusicUrl || validated.musicUrl,
+            title: validated.title || null,
+            description: validated.description || null,
+            thumbMediaId: validated.thumbMediaId ?? null
+          });
         }
 
         case 'send_news': {
@@ -175,12 +183,13 @@ export const customerServiceMcpTool: McpTool = {
             news: { articles: validated.articles }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `图文客服消息发送成功\n- 接收者: ${validated.toUser}\n- 文章数量: ${validated.articles.length}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_news',
+            toUser: validated.toUser,
+            msgType: 'news',
+            articleCount: validated.articles.length,
+            articles: validated.articles
+          });
         }
 
         case 'send_mpnews': {
@@ -197,12 +206,12 @@ export const customerServiceMcpTool: McpTool = {
             mpnews: { mediaId: validated.mediaId }
           });
 
-          return {
-            content: [{
-              type: 'text',
-              text: `图文客服消息发送成功\n- 接收者: ${validated.toUser}\n- MediaID: ${validated.mediaId}`
-            }]
-          };
+          return jsonResult({
+            action: 'send_mpnews',
+            toUser: validated.toUser,
+            msgType: 'mpnews',
+            mediaId: validated.mediaId
+          });
         }
 
         case 'get_records': {
@@ -220,18 +229,19 @@ export const customerServiceMcpTool: McpTool = {
             validated.number
           );
 
-          const records = result.records.map((record, index) =>
-            `${index + 1}. ${record.worker} -> ${record.openid}\n` +
-            `   时间: ${new Date(record.time * 1000).toLocaleString()}\n` +
-            `   内容: ${record.text}\n`
-          ).join('\n');
-
-          return {
-            content: [{
-              type: 'text',
-              text: `客服聊天记录 (共 ${result.records.length} 条):\n${records}`
-            }]
-          };
+          return jsonResult({
+            action: 'get_records',
+            count: result.records.length,
+            startTime: validated.startTime,
+            endTime: validated.endTime,
+            records: result.records.map((record) => ({
+              worker: record.worker,
+              openId: record.openid,
+              operCode: record.opercode,
+              time: record.time,
+              text: record.text
+            }))
+          });
         }
 
       default:

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const tagNameSchema = z.string().min(1, '标签名不能为空').max(30, '标签名不能超过30个字符');
@@ -50,26 +51,27 @@ export const tagMcpTool: McpTool = {
         }
 
         const result = await apiClient.createTag(validated.tagName);
-        return {
-          content: [{
-            type: 'text',
-            text: `标签创建成功\n- 标签ID: ${result.tag.id}\n- 标签名: ${result.tag.name}`
-          }]
-        };
+        return jsonResult({
+          action: 'create',
+          tagId: result.tag.id,
+          tagName: result.tag.name,
+        });
       }
 
       case 'get_list': {
         const result = await apiClient.getTags();
-        const tags = result.tags.map(tag =>
-          `- ID: ${tag.id}, 名称: ${tag.name}, 用户数: ${tag.count}`
-        ).join('\n');
+        const tags = result.tags.map(tag => ({
+          id: tag.id,
+          name: tag.name,
+          count: tag.count,
+        }));
 
-        return {
-          content: [{
-            type: 'text',
-            text: `标签列表 (共 ${result.tags.length} 个):\n${tags}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_list',
+          count: tags.length,
+          total: tags.length,
+          tags,
+        });
       }
 
       case 'update': {
@@ -81,12 +83,11 @@ export const tagMcpTool: McpTool = {
         }
 
         await apiClient.updateTag(validated.tagId, validated.tagName);
-        return {
-          content: [{
-            type: 'text',
-            text: `标签更新成功\n- 标签ID: ${validated.tagId}\n- 新名称: ${validated.tagName}`
-          }]
-        };
+        return jsonResult({
+          action: 'update',
+          tagId: validated.tagId,
+          tagName: validated.tagName,
+        });
       }
 
       case 'delete': {
@@ -95,12 +96,10 @@ export const tagMcpTool: McpTool = {
         }
 
         await apiClient.deleteTag(validated.tagId);
-        return {
-          content: [{
-            type: 'text',
-            text: `标签删除成功\n- 标签ID: ${validated.tagId}`
-          }]
-        };
+        return jsonResult({
+          action: 'delete',
+          tagId: validated.tagId,
+        });
       }
 
       case 'batch_tagging': {
@@ -112,12 +111,12 @@ export const tagMcpTool: McpTool = {
         }
 
         await apiClient.batchTagging(validated.openIdList, validated.tagId);
-        return {
-          content: [{
-            type: 'text',
-            text: `批量为用户打标签成功\n- 标签ID: ${validated.tagId}\n- 用户数量: ${validated.openIdList.length}\n- 用户OpenIDs: ${validated.openIdList.join(', ')}`
-          }]
-        };
+        return jsonResult({
+          action: 'batch_tagging',
+          tagId: validated.tagId,
+          count: validated.openIdList.length,
+          openids: validated.openIdList,
+        });
       }
 
       case 'batch_untagging': {
@@ -129,12 +128,12 @@ export const tagMcpTool: McpTool = {
         }
 
         await apiClient.batchUntagging(validated.openIdList, validated.tagId);
-        return {
-          content: [{
-            type: 'text',
-            text: `批量为用户取消标签成功\n- 标签ID: ${validated.tagId}\n- 用户数量: ${validated.openIdList.length}\n- 用户OpenIDs: ${validated.openIdList.join(', ')}`
-          }]
-        };
+        return jsonResult({
+          action: 'batch_untagging',
+          tagId: validated.tagId,
+          count: validated.openIdList.length,
+          openids: validated.openIdList,
+        });
       }
 
       case 'get_tag_users': {
@@ -143,16 +142,13 @@ export const tagMcpTool: McpTool = {
         }
 
         const result = await apiClient.getTagUsers(String(validated.tagId), validated.nextOpenId);
-        return {
-          content: [{
-            type: 'text',
-            text: `标签下的用户列表:\n` +
-                  `- 标签ID: ${validated.tagId}\n` +
-                  `- 用户数量: ${result.count}\n` +
-                  `- 用户OpenIDs: ${result.data.openid.join(', ')}\n` +
-                  `${result.next_openid ? `- 下一页起始ID: ${result.next_openid}` : ''}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_tag_users',
+          tagId: validated.tagId,
+          count: result.count,
+          openids: result.data?.openid ?? [],
+          nextOpenid: result.next_openid || null,
+        });
       }
 
       default:

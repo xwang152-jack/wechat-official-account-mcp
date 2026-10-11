@@ -93,14 +93,25 @@ export class AuthManager {
     }
 
     try {
-      const response = await axios.get('https://api.weixin.qq.com/cgi-bin/token', {
-        params: {
-          grant_type: 'client_credential',
-          appid: this.config.appId,
-          secret: this.config.appSecret,
-        },
-        timeout: 10000,
-      });
+      // 稳定版 token 与 getAccessToken 互相隔离：多次获取不会使旧 token 失效，
+      // 适合多实例/多客户端并发场景。设置 WECHAT_STABLE_TOKEN=true 启用。
+      const useStableToken = process.env.WECHAT_STABLE_TOKEN === 'true' || process.env.WECHAT_STABLE_TOKEN === '1';
+
+      const response = useStableToken
+        ? await axios.post('https://api.weixin.qq.com/cgi-bin/stable_token', {
+            grant_type: 'client_credential',
+            appid: this.config.appId,
+            secret: this.config.appSecret,
+            force_refresh: false,
+          }, { timeout: 10000 })
+        : await axios.get('https://api.weixin.qq.com/cgi-bin/token', {
+            params: {
+              grant_type: 'client_credential',
+              appid: this.config.appId,
+              secret: this.config.appSecret,
+            },
+            timeout: 10000,
+          });
 
       if (response.data.errcode) {
         throw new Error(`Failed to get access token: ${response.data.errmsg} (${response.data.errcode})`);

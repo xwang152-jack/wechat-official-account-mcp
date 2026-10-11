@@ -4,6 +4,7 @@ import { WechatApiClient } from '../../wechat/api-client.js';
 import FormData from 'form-data';
 import path from 'path';
 import { validateFilePath } from '../../utils/validation.js';
+import { jsonResult } from '../json-result.js';
 
 // 上传图文消息图片参数 Schema
 const uploadImgToolSchema = z.object({
@@ -64,12 +65,13 @@ async function handleUploadImgTool(args: unknown, apiClient: WechatApiClient): P
     throw new Error(`微信API错误: ${response.errmsg} (${response.errcode})`);
   }
 
-  return {
-    content: [{
-      type: 'text',
-      text: `图片上传成功！\n图片URL: ${response.url}\n文件名: ${actualFileName}\n文件大小: ${fileBuffer.length} 字节\n格式: ${ext.substring(1)}`
-    }]
-  };
+  return jsonResult({
+    action: 'upload_img',
+    url: response.url,
+    fileName: actualFileName,
+    fileSize: fileBuffer.length,
+    format: ext.substring(1),
+  });
 }
 
 /**

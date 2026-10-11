@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { McpTool, WechatApiClient, WechatToolResult } from '../types.js';
+import { jsonResult } from '../json-result.js';
 
 // 验证 Schema
 const openIdSchema = z.string().min(1, 'OpenID不能为空');
@@ -52,16 +53,13 @@ export const userMcpTool: McpTool = {
     switch (validated.action) {
       case 'get_user_list': {
         const result = await apiClient.getUserList(validated.nextOpenId);
-        return {
-          content: [{
-            type: 'text',
-            text: `用户列表获取成功:\n` +
-                  `- 总用户数: ${result.total}\n` +
-                  `- 本次返回: ${result.count} 条\n` +
-                  `- 用户OpenIDs: ${result.data.openid.join(', ')}\n` +
-                  `${result.nextOpenid ? `- 下一页起始ID: ${result.nextOpenid}` : ''}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_user_list',
+          total: result.total,
+          count: result.count,
+          openids: result.data?.openid ?? [],
+          nextOpenid: result.nextOpenid || null,
+        });
       }
 
       case 'get_user_info': {
@@ -70,22 +68,22 @@ export const userMcpTool: McpTool = {
         }
 
         const user = await apiClient.getUserInfo(validated.openId, validated.lang);
-        return {
-          content: [{
-            type: 'text',
-            text: `用户信息:\n` +
-                  `- 昵称: ${user.nickname}\n` +
-                  `- OpenID: ${user.openid}\n` +
-                  `- 是否关注: ${user.subscribe === 1 ? '是' : '否'}\n` +
-                  `- 性别: ${user.sex === 1 ? '男' : user.sex === 2 ? '女' : '未知'}\n` +
-                  `- 城市: ${user.city} ${user.province} ${user.country}\n` +
-                  `- 语言: ${user.language}\n` +
-                  `- 头像: ${user.headImgUrl}\n` +
-                  `- 关注时间: ${new Date(user.subscribeTime * 1000).toLocaleString()}\n` +
-                  `${user.remark ? `- 备注: ${user.remark}` : ''}\n` +
-                  `${user.unionId ? `- UnionID: ${user.unionId}` : ''}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_user_info',
+          openid: user.openid,
+          nickname: user.nickname,
+          subscribe: user.subscribe,
+          subscribed: user.subscribe === 1,
+          sex: user.sex,
+          language: user.language ?? null,
+          city: user.city ?? null,
+          province: user.province ?? null,
+          country: user.country ?? null,
+          headImgUrl: user.headImgUrl ?? null,
+          subscribeTime: user.subscribeTime ?? null,
+          unionId: user.unionId ?? null,
+          remark: user.remark ?? null,
+        });
       }
 
       case 'batch_get_user_info': {
@@ -98,16 +96,30 @@ export const userMcpTool: McpTool = {
         }
 
         const result = await apiClient.batchGetUserInfo(validated.openIdList, validated.lang);
-        const userList = result.user_info_list.map(user =>
-          `- ${user.nickname} (${user.openid}) - ${user.subscribe === 1 ? '已关注' : '未关注'}`
-        ).join('\n');
+        const users = result.user_info_list.map(user => ({
+          openid: user.openid,
+          nickname: user.nickname,
+          subscribe: user.subscribe,
+          subscribed: user.subscribe === 1,
+          sex: user.sex,
+          language: user.language ?? null,
+          city: user.city ?? null,
+          province: user.province ?? null,
+          country: user.country ?? null,
+          headImgUrl: user.headImgUrl ?? null,
+          subscribeTime: user.subscribeTime ?? null,
+          unionId: user.unionId ?? null,
+          remark: user.remark ?? null,
+          groupId: user.groupId ?? null,
+        }));
 
-        return {
-          content: [{
-            type: 'text',
-            text: `批量获取用户信息成功，共 ${result.user_info_list.length} 个用户:\n${userList}`
-          }]
-        };
+        return jsonResult({
+          action: 'batch_get_user_info',
+          requested: validated.openIdList.length,
+          count: users.length,
+          openids: validated.openIdList,
+          users,
+        });
       }
 
       case 'set_remark': {
@@ -119,12 +131,11 @@ export const userMcpTool: McpTool = {
         }
 
         await apiClient.updateUserRemark(validated.openId, validated.remark);
-        return {
-          content: [{
-            type: 'text',
-            text: `用户备注设置成功\n- OpenID: ${validated.openId}\n- 备注: ${validated.remark}`
-          }]
-        };
+        return jsonResult({
+          action: 'set_remark',
+          openid: validated.openId,
+          remark: validated.remark,
+        });
       }
 
       case 'get_user_summary': {
@@ -133,16 +144,21 @@ export const userMcpTool: McpTool = {
         }
 
         const result = await apiClient.getUserSummary(validated.beginDate, validated.endDate);
-        const summary = result.list.map(item =>
-          `${item.ref_date}: 新增 ${item.new_user} 人，取消 ${item.cancel_user} 人`
-        ).join('\n');
+        const items = result.list.map(item => ({
+          refDate: item.ref_date,
+          userSource: item.user_source,
+          newUser: item.new_user,
+          cancelUser: item.cancel_user,
+        }));
 
-        return {
-          content: [{
-            type: 'text',
-            text: `用户增减数据 (${validated.beginDate} 至 ${validated.endDate}):\n${summary}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_user_summary',
+          beginDate: validated.beginDate,
+          endDate: validated.endDate,
+          count: items.length,
+          total: items.length,
+          items,
+        });
       }
 
       case 'get_user_cumulate': {
@@ -151,16 +167,19 @@ export const userMcpTool: McpTool = {
         }
 
         const result = await apiClient.getUserCumulate(validated.beginDate, validated.endDate);
-        const cumulate = result.list.map(item =>
-          `${item.ref_date}: 累计用户 ${item.cumulate_user} 人`
-        ).join('\n');
+        const items = result.list.map(item => ({
+          refDate: item.ref_date,
+          cumulateUser: item.cumulate_user,
+        }));
 
-        return {
-          content: [{
-            type: 'text',
-            text: `累计用户数据 (${validated.beginDate} 至 ${validated.endDate}):\n${cumulate}`
-          }]
-        };
+        return jsonResult({
+          action: 'get_user_cumulate',
+          beginDate: validated.beginDate,
+          endDate: validated.endDate,
+          count: items.length,
+          total: items.length,
+          items,
+        });
       }
 
       default:
