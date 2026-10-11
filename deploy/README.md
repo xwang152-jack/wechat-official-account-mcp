@@ -91,6 +91,16 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d wechat.bingodify.cn --non-interactive --agree-tos --redirect
 ```
 
+> **certbot 跑过之后不要再 `cp`**：certbot 会就地改写该文件补上 `listen 443 ssl`
+> 与证书路径，覆盖写入会丢掉 HTTPS 配置。此后改配置请用 `sed -i` 原地改，例如调整
+> 上传体积上限：
+>
+> ```bash
+> sudo sed -i 's/client_max_body_size .*/client_max_body_size 12m;/' \
+>   /etc/nginx/sites-available/wechat
+> sudo nginx -t && sudo systemctl reload nginx
+> ```
+
 ## 验证
 
 ```bash
