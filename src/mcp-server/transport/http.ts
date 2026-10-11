@@ -143,7 +143,10 @@ export const initHttpServer: InitTransportServerFunction = async (
         type: mediaType,
       });
 
+      // 显式释放资源（Buffer 会被 GC 回收，这里确保引用不延迟回收）
       await authManager.dispose();
+      buffer.fill(0); // 清零内存中的图片数据
+      req.body = null;
     } catch (error) {
       logger.error('Upload endpoint error:', error);
       if (!res.headersSent) {
