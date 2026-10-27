@@ -1,9 +1,10 @@
 import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { InitTransportServerFunction } from '../shared/index.js';
-import { AuthManager } from '../../auth/auth-manager.js';
+import { AuthManager, createAuthManager } from '../../auth/auth-manager.js';
 import { WechatApiClient } from '../../wechat/api-client.js';
 import { logger } from '../../utils/logger.js';
+import { isValidMediaType, isValidFileSize, FILE_SIZE_LIMITS } from '../../utils/validation.js';
 
 /**
  * Streamable HTTP 传输（MCP 规范当前推荐的远程传输）
@@ -85,51 +86,57 @@ export const initHttpServer: InitTransportServerFunction = async (
   // 用法: curl -X POST -H "Authorization: Bearer <token>"
   //        -H "Content-Type: image/jpeg" --data-binary @cover.jpg
   //        "https://host:port/upload?filename=cover.jpg&type=image"
-  const ALLOWED_MEDIA_TYPES = new Set(['image', 'voice', 'video', 'thumb']);
-  const ALLOWED_CONTENT_PREFIXES = [
-    'image/', 'audio/', 'video/',
-  ];
+  // 反向代理需允许大于 10m 的请求体（如 nginx client_max_body_size 12m），否则会被 413 拦截。
+  const MEDIA_TYPES = ['image', 'voice', 'video', 'thumb'] as const;
+  type MediaType = typeof MEDIA_TYPES[number];
 
   app.post('/upload', requireAuth, express.raw({ type: () => true, limit: '10mb' }), async (req, res) => {
+    const buffer = req.body as Buffer;
+    let authManager: AuthManager | null = null;
     try {
-      const buffer = req.body as Buffer;
-      if (!buffer || buffer.length === 0) {
+      if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
         res.status(400).json({ error: 'Empty file body' });
         return;
       }
 
-      const filename = (req.query.filename as string) || 'upload.bin';
-      const mediaType = (req.query.type as string) || 'image';
-      const contentType = req.headers['content-type'] || 'application/octet-stream';
-
-      if (!ALLOWED_MEDIA_TYPES.has(mediaType)) {
-        res.status(400).json({
-          error: `Unsupported media type "${mediaType}". Allowed: image, voice, video, thumb`,
-        });
+      const rawFilename = req.query.filename;
+      const rawType = req.query.type;
+      if ((rawFilename !== undefined && typeof rawFilename !== 'string') ||
+          (rawType !== undefined && typeof rawType !== 'string')) {
+        res.status(400).json({ error: 'filename and type must each be a single string value' });
         return;
       }
 
-      const isAllowedContent = ALLOWED_CONTENT_PREFIXES.some((prefix) =>
-        contentType.startsWith(prefix),
-      );
-      if (!isAllowedContent) {
+      const filename = typeof rawFilename === 'string' && rawFilename ? rawFilename : 'upload.bin';
+      const mediaType = (typeof rawType === 'string' && rawType ? rawType : 'image') as MediaType;
+      // 去掉 charset 等参数后再比对白名单
+      const contentType = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+
+      if (!MEDIA_TYPES.includes(mediaType)) {
         res.status(400).json({
-          error: `Unsupported Content-Type "${contentType}". Must start with image/, audio/, or video/`,
+          error: `Unsupported media type "${mediaType}". Allowed: ${MEDIA_TYPES.join(', ')}`,
+        });
+        return;
+      }
+      if (!isValidMediaType(contentType)) {
+        res.status(400).json({
+          error: `Unsupported Content-Type "${contentType}" for type "${mediaType}"`,
+        });
+        return;
+      }
+      if (!isValidFileSize(buffer.length, mediaType)) {
+        res.status(400).json({
+          error: `${mediaType} files must be <= ${FILE_SIZE_LIMITS[mediaType]} bytes (got ${buffer.length})`,
         });
         return;
       }
 
       // 创建独立的 AuthManager + ApiClient（与 MCP 端点相同的初始化方式）
-      const authManager = new AuthManager();
-      await authManager.initialize();
-      const { appId, appSecret } = options;
-      if (appId && appSecret) {
-        await authManager.setConfig({ appId, appSecret });
-      }
+      authManager = await createAuthManager(options.appId, options.appSecret);
       const apiClient = new WechatApiClient(authManager);
 
       const result = await apiClient.addPermanentMaterial({
-        type: mediaType as 'image' | 'voice' | 'video' | 'thumb',
+        type: mediaType,
         media: buffer,
         fileName: filename,
       });
@@ -142,17 +149,27 @@ export const initHttpServer: InitTransportServerFunction = async (
         size: buffer.length,
         type: mediaType,
       });
-
-      // 显式释放资源（Buffer 会被 GC 回收，这里确保引用不延迟回收）
-      await authManager.dispose();
-      buffer.fill(0); // 清零内存中的图片数据
-      req.body = null;
     } catch (error) {
-      logger.error('Upload endpoint error:', error);
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      logger.error(
+        `Upload endpoint error${status ? ` (HTTP ${status})` : ''}: ${(error as Error)?.message ?? String(error)}`,
+      );
       if (!res.headersSent) {
         res.status(500).json({
           error: (error as Error).message || 'Upload failed',
         });
+      }
+    } finally {
+      if (Buffer.isBuffer(buffer)) {
+        buffer.fill(0); // 清零内存中的文件数据
+      }
+      req.body = null;
+      if (authManager) {
+        try {
+          await authManager.dispose();
+        } catch (disposeError) {
+          logger.error(`Failed to dispose AuthManager: ${(disposeError as Error)?.message ?? String(disposeError)}`);
+        }
       }
     }
   });

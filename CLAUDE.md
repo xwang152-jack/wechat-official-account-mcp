@@ -74,7 +74,7 @@ npm run pack:dry
 - `shared/init.ts` - Server initialization logic (`initWechatMcpServer`, `initMcpServerWithTransport`)
 - `shared/types.ts` - Server configuration types (`McpServerOptions`)
 - `transport/stdio.ts` - stdio transport for local MCP clients (default for Claude Desktop)
-- `transport/http.ts` - **Streamable HTTP** transport (recommended for remote). Stateless: a fresh server+transport per request. Bearer auth via `MCP_HTTP_TOKEN`; origin allowlist via `CORS_ORIGIN`. Endpoints: `POST /mcp`, `GET /healthz`.
+- `transport/http.ts` - **Streamable HTTP** transport (recommended for remote). Stateless: a fresh server+transport per request. Bearer auth via `MCP_HTTP_TOKEN`; origin allowlist via `CORS_ORIGIN`. Endpoints: `POST /mcp`, `GET /healthz`, `POST /upload` (bearer auth, raw body, 10mb limit, query `filename` + `type`).
 - `transport/sse.ts` - SSE transport, **deprecated by the MCP spec and unauthenticated**. Retained for compatibility only; `--mode sse` logs a warning.
 
 Deployment is **single-tenant self-hosted by design**. Multi-tenant hosting was evaluated and rejected: Claude connectors don't support user-pasted static credentials (`static_bearer` is unsupported), and WeChat requires the caller's IP to be whitelisted on each account (`40164 invalid ip`).

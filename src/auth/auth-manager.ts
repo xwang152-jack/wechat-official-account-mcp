@@ -179,3 +179,18 @@ export class AuthManager {
     await this.storageManager.close();
   }
 }
+
+/**
+ * 初始化 AuthManager；仅当持久化配置与传入凭据不一致时才写入。
+ * 每次 setConfig 都会清空缓存的 access_token，所以配置未变时必须跳过，
+ * 否则每个请求都会强制重新获取 token。
+ */
+export async function createAuthManager(appId: string, appSecret: string): Promise<AuthManager> {
+  const authManager = new AuthManager();
+  await authManager.initialize();
+  const saved = await authManager.getConfig();
+  if (!saved || saved.appId !== appId || saved.appSecret !== appSecret) {
+    await authManager.setConfig({ appId, appSecret });
+  }
+  return authManager;
+}

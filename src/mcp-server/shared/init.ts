@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WechatMcpTool } from '../../mcp-tool/index.js';
 import { SERVER_INSTRUCTIONS } from '../../mcp-tool/public-tools.js';
-import { AuthManager } from '../../auth/auth-manager.js';
+import { createAuthManager } from '../../auth/auth-manager.js';
 import { initStdioServer, initSSEServer, initHttpServer } from '../transport/index.js';
 import { McpServerOptions } from './types';
 import { logger } from '../../utils/logger.js';
@@ -28,9 +28,7 @@ export async function initWechatMcpServer(options: McpServerOptions) {
   );
 
   // 创建认证管理器
-  const authManager = new AuthManager();
-  await authManager.initialize();
-  await authManager.setConfig({ appId, appSecret });
+  const authManager = await createAuthManager(appId, appSecret);
 
   // 创建微信MCP工具
   const wechatTool = new WechatMcpTool(authManager);

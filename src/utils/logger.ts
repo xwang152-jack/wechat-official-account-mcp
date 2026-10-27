@@ -36,6 +36,11 @@ function sanitizeValue(value: unknown): unknown {
     return '***';
   }
 
+  // Error 的 config 里可能带 access_token，只保留 name/message
+  if (value instanceof Error) {
+    return { name: value.name, message: value.message };
+  }
+
   if (typeof value === 'object' && value !== null) {
     if (Array.isArray(value)) {
       return value.map(sanitizeValue);
